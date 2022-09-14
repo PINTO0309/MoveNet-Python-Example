@@ -1,7 +1,7 @@
 # MoveNet-Python-Example
 
 :hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster:  
-**This is Fork for checking the operation of MoveNet, which has been modified independently.**  
+**[WIP] This is Fork for checking the operation of MoveNet, which has been modified independently.**  
 :hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster:  
 
 [MoveNet](https://tfhub.dev/s?q=MoveNet)のPythonでの動作サンプルです。<br>
