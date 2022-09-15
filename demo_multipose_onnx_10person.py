@@ -58,20 +58,27 @@ def main():
     # 引数解析 #################################################################
     args = get_args()
     cap_device = args.device
-    cap_width = args.width
-    cap_height = args.height
+
 
     if args.file is not None:
         cap_device = args.file
+
+    cap = cv.VideoCapture(cap_device)
+
+    if args.file is not None:
+        cap_width = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
+        cap_height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+    else:
+        cap_width = args.width
+        cap_height = args.height
+        cap.set(cv.CAP_PROP_FRAME_WIDTH, cap_width)
+        cap.set(cv.CAP_PROP_FRAME_HEIGHT, cap_height)
 
     mirror = args.mirror
     keypoint_score_th = args.keypoint_score
     bbox_score_th = args.bbox_score
 
     # カメラ準備 ###############################################################
-    cap = cv.VideoCapture(cap_device)
-    cap.set(cv.CAP_PROP_FRAME_WIDTH, cap_width)
-    cap.set(cv.CAP_PROP_FRAME_HEIGHT, cap_height)
     cap_fps = cap.get(cv.CAP_PROP_FPS)
     fourcc = cv.VideoWriter_fourcc('m','p','4','v')
     video_writer = cv.VideoWriter(
