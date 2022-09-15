@@ -59,7 +59,6 @@ def main():
     args = get_args()
     cap_device = args.device
 
-
     if args.file is not None:
         cap_device = args.file
 
@@ -209,6 +208,7 @@ def draw_debug(
 
     for keypoints_with_score in keypoints_with_scores:
         if keypoints_with_score[55] > bbox_score_th:
+            # Line: bone
             _ = [
                 cv.line(
                     debug_image,
