@@ -4,7 +4,7 @@
 **This is Fork for checking the operation of MoveNet, which has been modified independently.**  
 :hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster::hamster:  
 
-- MoveNet MultPose + 10 person special
+- MoveNet MultPose + 10 person special + USB Camera 480x640
 
 https://user-images.githubusercontent.com/33194443/190292838-bdc38f2c-d3e5-4d54-96b4-51994fce3e95.mp4
 
