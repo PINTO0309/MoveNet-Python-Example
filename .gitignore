@@ -136,3 +136,4 @@ movenet_multipose_lightning_256x320_p10.onnx
 movenet_multipose_lightning_480x640_p10.onnx
 *.engine
 *.profile
+*.mp4

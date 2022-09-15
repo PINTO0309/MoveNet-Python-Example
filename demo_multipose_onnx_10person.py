@@ -15,10 +15,10 @@ def get_args():
 
     parser.add_argument("--device", type=int, default=0)
     parser.add_argument("--file", type=str, default=None)
-    parser.add_argument("--width", help='cap width', type=int, default=960)
-    parser.add_argument("--height", help='cap height', type=int, default=540)
+    parser.add_argument("--width", help='cap width', type=int, default=640)
+    parser.add_argument("--height", help='cap height', type=int, default=480)
     parser.add_argument('--mirror', action='store_true')
-    parser.add_argument("--keypoint_score", type=float, default=0.4)
+    parser.add_argument("--keypoint_score", type=float, default=0.2)
     parser.add_argument("--bbox_score", type=float, default=0.2)
 
     args = parser.parse_args()
@@ -72,6 +72,14 @@ def main():
     cap = cv.VideoCapture(cap_device)
     cap.set(cv.CAP_PROP_FRAME_WIDTH, cap_width)
     cap.set(cv.CAP_PROP_FRAME_HEIGHT, cap_height)
+    cap_fps = cap.get(cv.CAP_PROP_FPS)
+    fourcc = cv.VideoWriter_fourcc('m','p','4','v')
+    video_writer = cv.VideoWriter(
+        filename='output.mp4',
+        fourcc=fourcc,
+        fps=cap_fps,
+        frameSize=(cap_width, cap_height),
+    )
 
     # モデルロード #############################################################
     model_path = f"onnx/movenet_multipose_lightning_256x320_p10.onnx"
@@ -132,8 +140,12 @@ def main():
 
         # 画面反映 #############################################################
         cv.imshow('MoveNet(multipose) Demo', debug_image)
+        video_writer.write(debug_image)
 
-    cap.release()
+    if video_writer:
+        video_writer.release()
+    if cap:
+        cap.release()
     cv.destroyAllWindows()
 
 
@@ -189,23 +201,30 @@ def draw_debug(
     """
 
     for keypoints_with_score in keypoints_with_scores:
-        for line_idxs in lines:
-            index01, index02 = line_idxs
-            if keypoints_with_score[index01*3+2] > keypoint_score_th and keypoints_with_score[index02*3+2] > keypoint_score_th:
-                point01 = (int(keypoints_with_score[index01*3+0]), int(keypoints_with_score[index01*3+1]))
-                point02 = (int(keypoints_with_score[index02*3+0]), int(keypoints_with_score[index02*3+1]))
-                cv.line(debug_image, point01, point02, (255, 255, 255), 4)
-                cv.line(debug_image, point01, point02, (0, 0, 0), 2)
-
-        # Circle：各点
-        for keypoint_idx in range(17):
-            if keypoints_with_score[keypoint_idx*3+2] > keypoint_score_th:
-                keypoint = (int(keypoints_with_score[keypoint_idx*3+0]), int(keypoints_with_score[keypoint_idx*3+1]))
-                cv.circle(debug_image, keypoint, 6, (255, 255, 255), -1)
-                cv.circle(debug_image, keypoint, 3, (0, 0, 0), -1)
-
-        # バウンディングボックス
         if keypoints_with_score[55] > bbox_score_th:
+            _ = [
+                cv.line(
+                    debug_image,
+                    (int(keypoints_with_score[line_idxs[0]*3+0]), int(keypoints_with_score[line_idxs[0]*3+1])),
+                    (int(keypoints_with_score[line_idxs[1]*3+0]), int(keypoints_with_score[line_idxs[1]*3+1])),
+                    (0, 255, 0),
+                    2
+                ) for line_idxs in lines \
+                    if keypoints_with_score[line_idxs[0]*3+2] > keypoint_score_th and keypoints_with_score[line_idxs[1]*3+2] > keypoint_score_th
+            ]
+
+            # Circle：各点
+            _ = [
+                cv.circle(
+                    debug_image,
+                    (int(keypoints_with_score[keypoint_idx*3+0]), int(keypoints_with_score[keypoint_idx*3+1])),
+                    3,
+                    (0, 0, 255),
+                    -1
+                ) for keypoint_idx in range(17) if keypoints_with_score[keypoint_idx*3+2] > keypoint_score_th
+            ]
+
+            # バウンディングボックス
             cv.rectangle(
                 debug_image,
                 (int(keypoints_with_score[51]), int(keypoints_with_score[52])),
