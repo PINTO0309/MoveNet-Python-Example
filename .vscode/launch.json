@@ -10,8 +10,11 @@
             "justMyCode": true,
             "args": [
                 // "--file", "test6_360x640.mp4",
-                "--num_person", "20",
+                // "--num_person", "20",
                 // "--optimize_myriad",
+                "--mirror",
+                "--bbox_score", "0.40",
+                "--palm_square_crop",
             ]
         }
     ]
