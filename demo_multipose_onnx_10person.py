@@ -18,8 +18,8 @@ def get_args():
     parser.add_argument("--width", help='cap width', type=int, default=640)
     parser.add_argument("--height", help='cap height', type=int, default=480)
     parser.add_argument('--mirror', action='store_true')
-    parser.add_argument("--keypoint_score", type=float, default=0.2)
-    parser.add_argument("--bbox_score", type=float, default=0.2)
+    parser.add_argument("--keypoint_score", type=float, default=0.20)
+    parser.add_argument("--bbox_score", type=float, default=0.20)
 
     args = parser.parse_args()
 
@@ -89,7 +89,7 @@ def main():
     )
 
     # モデルロード #############################################################
-    model_path = f"onnx/movenet_multipose_lightning_256x320_p10.onnx"
+    model_path = f"onnx/movenet_multipose_lightning_384x640_p20.onnx"
     onnx_session = onnxruntime.InferenceSession(
         model_path,
         providers=[

@@ -131,9 +131,13 @@ dmypy.json
 # bat
 *.bat
 
-movenet_multipose_lightning_192x256_p10.onnx
-movenet_multipose_lightning_256x320_p10.onnx
-movenet_multipose_lightning_480x640_p10.onnx
+movenet_multipose_lightning_*x*.onnx
+movenet_multipose_lightning_*x*_p10.onnx
+movenet_multipose_lightning_*x*_p20.onnx
+movenet_multipose_lightning_192x256_p10_myriad.onnx
+
 *.engine
 *.profile
 *.mp4
+*.MP4
+myriad_test/
