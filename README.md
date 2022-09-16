@@ -12,7 +12,7 @@ https://user-images.githubusercontent.com/33194443/190295137-ca6194cc-6b41-44be-
 
 https://user-images.githubusercontent.com/33194443/190524104-bf56a9c1-2d60-482f-af4a-342c5f570845.mp4
 
-- PoseBase Hand-Crop
+- PoseBase Hand-Crop - Flip image left/right
 
 https://user-images.githubusercontent.com/33194443/190611783-24c5c671-005e-4a65-8e34-5cc81ff33a62.mp4
 
