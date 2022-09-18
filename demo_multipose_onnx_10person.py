@@ -248,14 +248,6 @@ def draw_debug(
                 # 手のひらのクロップ
                 image_width = image.shape[1]
                 image_height = image.shape[0]
-
-                x1 = int(keypoints_with_score[51])
-                y1 = int(keypoints_with_score[52])
-                x2 = int(keypoints_with_score[53])
-                y2 = int(keypoints_with_score[54])
-                x2 = x2 + 1 if x1 == x2 else x2 # 万が一幅がゼロになったときのAbort回避
-                y2 = y2 + 1 if y1 == y2 else y2 # 万が一高さがゼロになったときのAbort回避
-
                 """
                 0:nose,
                 1:left eye,
@@ -276,24 +268,15 @@ def draw_debug(
                 16:right ankle
                 """
                 # 入力画像が判定しているときは左手系と右手系を入れ替える
-                if not mirror:
-                    elbow_left_x = int(keypoints_with_score[21]) # 左肘のX座標
-                    elbow_left_y = int(keypoints_with_score[22]) # 左肘のY座標
-                    elbow_right_x = int(keypoints_with_score[24]) # 右肘のX座標
-                    elbow_right_y = int(keypoints_with_score[25]) # 右肘のY座標
-                    wrist_left_x = int(keypoints_with_score[27]) # 左手首のX座標
-                    wrist_left_y = int(keypoints_with_score[28]) # 左手首のY座標
-                    wrist_right_x = int(keypoints_with_score[30]) # 右手首のX座標
-                    wrist_right_y = int(keypoints_with_score[31]) # 右手首のY座標
-                else:
-                    elbow_left_x = int(keypoints_with_score[24]) # 左肘のX座標
-                    elbow_left_y = int(keypoints_with_score[25]) # 左肘のY座標
-                    elbow_right_x = int(keypoints_with_score[21]) # 右肘のX座標
-                    elbow_right_y = int(keypoints_with_score[22]) # 右肘のY座標
-                    wrist_left_x = int(keypoints_with_score[30]) # 左手首のX座標
-                    wrist_left_y = int(keypoints_with_score[31]) # 左手首のY座標
-                    wrist_right_x = int(keypoints_with_score[27]) # 右手首のX座標
-                    wrist_right_y = int(keypoints_with_score[28]) # 右手首のY座標
+                rev = 1 if mirror else 0
+                elbow_left_x = int(keypoints_with_score[21+rev*3]) # 左肘のX座標
+                elbow_left_y = int(keypoints_with_score[22+rev*3]) # 左肘のY座標
+                elbow_right_x = int(keypoints_with_score[24-rev*3]) # 右肘のX座標
+                elbow_right_y = int(keypoints_with_score[25-rev*3]) # 右肘のY座標
+                wrist_left_x = int(keypoints_with_score[27+rev*3]) # 左手首のX座標
+                wrist_left_y = int(keypoints_with_score[28+rev*3]) # 左手首のY座標
+                wrist_right_x = int(keypoints_with_score[30-rev*3]) # 右手首のX座標
+                wrist_right_y = int(keypoints_with_score[31-rev*3]) # 右手首のY座標
 
                 """
                 ・左肘と左手首のX座標の位置関係を見て横方向のクロップ位置を微妙に補正する
