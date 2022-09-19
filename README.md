@@ -18,8 +18,7 @@ https://user-images.githubusercontent.com/33194443/190611783-24c5c671-005e-4a65-
 
 - PoseBase Hand-Crop - Flip image left/right - Palm Detection + Rotation
 
-
-https://user-images.githubusercontent.com/33194443/190999227-71b37a2c-3e13-4caa-ae8e-feb939a39fe9.mp4
+https://user-images.githubusercontent.com/33194443/191034870-e69c6504-6f38-44a6-8fbf-dfdee2e42e6d.mp4
 
 ---
 
