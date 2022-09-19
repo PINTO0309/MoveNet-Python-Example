@@ -344,7 +344,7 @@ def run_inference_palm_detection(
                 cv.drawContours(debug_image, [box], 0,(0,0,255), 2, cv.LINE_AA)
                 ################# debug
 
-                # クロップ済み、かつ、回転角ゼロ度に調整された画像のリスト(Hand Landmarkモデル入力用画像)
+                # クロップ済み、かつ、回転角ゼロ度に調整された画像のリスト(Hand Landmark Detectionモデル入力用画像)
                 # 常時１件のリスト
                 cropted_rotated_hands_images = rotate_and_crop_rectangle(
                     image=hand_image,
