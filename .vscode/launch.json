@@ -13,7 +13,7 @@
                 // "--num_person", "20",
                 // "--optimize_myriad",
                 "--mirror",
-                "--bbox_score", "0.40",
+                // "--bbox_score", "0.40",
                 "--palm_square_crop",
             ]
         }

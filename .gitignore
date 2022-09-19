@@ -141,3 +141,4 @@ movenet_multipose_lightning_192x256_p10_myriad.onnx
 *.mp4
 *.MP4
 myriad_test/
+palm_detection_post-process_gen_tools/

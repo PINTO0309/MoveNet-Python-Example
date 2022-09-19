@@ -270,7 +270,7 @@ def crop_rectangle(
 
 def rotate_and_crop_rectangle(
     image: np.ndarray,
-    rects_tmp: np.ndarray,
+    hand_info_nps: np.ndarray,
     operation_when_cropping_out_of_range: str,
 ) -> List[np.ndarray]:
     """Crop a rotated rectangle from a image.
@@ -280,7 +280,7 @@ def rotate_and_crop_rectangle(
     image: np.ndarray
         Image to be rotate and crop.
 
-    rects: np.ndarray
+    hand_info_np: np.ndarray
         [boxcount, 5] = [boxcount, cx, cy, width, height, angle]\n
         Rotat and crop rectangle.
 
@@ -309,7 +309,7 @@ def rotate_and_crop_rectangle(
     rotated_croped_image: List[np.ndarray]
         Image after cropping and rotation.
     """
-    rects = copy.deepcopy(rects_tmp)
+    rects = copy.deepcopy(hand_info_nps)
     rotated_croped_images = []
     height = image.shape[0]
     width = image.shape[1]
