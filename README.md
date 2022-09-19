@@ -16,6 +16,11 @@ https://user-images.githubusercontent.com/33194443/190524104-bf56a9c1-2d60-482f-
 
 https://user-images.githubusercontent.com/33194443/190611783-24c5c671-005e-4a65-8e34-5cc81ff33a62.mp4
 
+- PoseBase Hand-Crop - Flip image left/right - Palm Detection + Rotation
+
+
+https://user-images.githubusercontent.com/33194443/190999227-71b37a2c-3e13-4caa-ae8e-feb939a39fe9.mp4
+
 ---
 
 [MoveNet](https://tfhub.dev/s?q=MoveNet)のPythonでの動作サンプルです。<br>
