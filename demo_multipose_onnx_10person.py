@@ -96,6 +96,27 @@ def run_inference_palm_detection(
     batch_nums = np.asarray([])
     score_cx_cy_w_wristcenterxy_middlefingerxys = np.asarray([])
     hand_images = []
+
+    """
+    MoveNet の骨格検出結果をもとに手のひらの位置を予想しつつ以下のことを行う
+    1. 元画像から左手部分の画像をクロップ
+    2. クロップした左手画像が正方形になるように四方をパディング
+    3. 元画像から右手部分の画像をクロップ
+    4. クロップした右手画像が正方形になるように四方をパディング
+    5. 切り取ってパディングされた左手と右手の画像はhand_imagesにスタック
+        ココから後ろの処理は全てパディング済みの座標系をもとに行われるので、
+        元の座標系に戻すときに左手と右手の左側パディングサイズと上側パディングサイズが必要となる
+        検出結果の座標からパディングサイズの左側と上側それぞれから引き算をすることで元の座標系と一致する
+        記憶するパディングサイズは下記基準で簡易的に計算する
+            [1] 左側パディング = (パディング後の画像全体幅 - パディング前の画像全体幅) // 2
+            [2] 上側パディング = (パディング後の画像全体高さ - パディング前の画像全体高さ) // 2
+
+    a. Palm Detectionは四方がパディングされて正方形になった元画像スケールの手のひら画像を 192x192 に縮小・拡大して推論している
+    b. したがって、Palm Detectionの推論結果は元画像スケールが、パディングの影響と縮小・拡大の影響を受けた座標系になる
+    c. Palm Detectionの結果を元画像の座標系に戻すためには、縮小・拡大の戻しをしたあとでパディング分を引き算する必要が有る（このとき減算するパディング値は [1]と[2]）
+    d. 後続の Hand Landmark検出モデルに投入するためだけに画像をストックする（なおこのときにストックする画像は正方形パディングされたうえで192x192に縮小・拡大され、さらに回転角をゼロ度に補正された画像）
+    e. hand_images と debug_image は 192x192 で BGR の画像のリスト
+    """
     for idx, keypoints_with_score in enumerate(keypoints_with_scores):
         if keypoints_with_score[55] > bbox_score_th:
             bbox_x1 = int(keypoints_with_score[51])
@@ -246,7 +267,8 @@ def run_inference_palm_detection(
     hand_info_list = []
     hand_image_list = []
     if len(hand_images) > 0:
-        input_images = np.asarray(hand_images, dtype=np.float32)
+        input_images = copy.deepcopy(hand_images)
+        input_images = np.asarray(input_images, dtype=np.float32)
         input_images = input_images / 255.0
         input_images = input_images[..., ::-1]
         input_images = input_images.transpose(0,3,1,2)
@@ -259,9 +281,9 @@ def run_inference_palm_detection(
         keep = score_cx_cy_w_wristcenterxy_middlefingerxys[:, 0] > palm_detection_score_th
         score_cx_cy_w_wristcenterxy_middlefingerxys = score_cx_cy_w_wristcenterxy_middlefingerxys[keep, :]
         batch_nums = batch_nums[keep, :]
-        input_images = [input_images[idx] for idx in batch_nums]
+        hand_images = [hand_images[int(idx)] for idx in batch_nums]
 
-        for input_image, score_cx_cy_w_wristcenterxy_middlefingerxy in zip(input_images, score_cx_cy_w_wristcenterxy_middlefingerxys):
+        for hand_image, score_cx_cy_w_wristcenterxy_middlefingerxy in zip(hand_images, score_cx_cy_w_wristcenterxy_middlefingerxys):
             cx = score_cx_cy_w_wristcenterxy_middlefingerxy[1]
             cy = score_cx_cy_w_wristcenterxy_middlefingerxy[2]
             w = score_cx_cy_w_wristcenterxy_middlefingerxy[3]
@@ -291,8 +313,6 @@ def run_inference_palm_detection(
                 # )
                 # print(f'score:{score} cx:{cx} cy:{cy} sqn_rr_size:{sqn_rr_size} rotation:{rotation} sqn_rr_center_x:{sqn_rr_center_x} sqn_rr_center_y:{sqn_rr_center_y}')
 
-                hand_image = input_image * 255 # 0-255
-                hand_image = hand_image[0].transpose(1,2,0)[..., ::-1].astype(np.uint8) # RGB
                 hand_image_height = hand_image.shape[0]
                 hand_image_width = hand_image.shape[1]
 
@@ -333,6 +353,9 @@ def run_inference_palm_detection(
                 ################# debug
 
                 # [元画像の中心座標X, 元画像の中心座標Y, 元画像スケールの手のひらの幅, 元画像スケールの手のひらの高さ, 回転角度]
+                # ただし、バウンディングボックス全体の幅を2.9倍に拡張している
+                # 中心座標 [rcx, rcy] は2.9倍拡張の影響を受けていない
+                # Palm Detection の推論に使用した画像を基準とした座標になっている
                 hand_info = [rcx, rcy, (x2-x1), (y2-y1), degree]
                 hand_info_list.append(hand_info)
                 hand_info_np = np.asarray(hand_info, dtype=np.float32)
@@ -342,10 +365,13 @@ def run_inference_palm_detection(
                 hand_info_tuple = ((hand_info_np[0], hand_info_np[1]), (hand_info_np[2], hand_info_np[3]), hand_info_np[4])
                 box = cv.boxPoints(hand_info_tuple).astype(np.int0)
                 cv.drawContours(debug_image, [box], 0,(0,0,255), 2, cv.LINE_AA)
+                cv.putText(debug_image, f'{int(hand_info_np[3])}x{int(hand_info_np[2])}', (5,40), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 4, cv.LINE_AA)
+                cv.putText(debug_image, f'{int(hand_info_np[3])}x{int(hand_info_np[2])}', (5,40), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2, cv.LINE_AA)
                 ################# debug
 
                 # クロップ済み、かつ、回転角ゼロ度に調整された画像のリスト(Hand Landmark Detectionモデル入力用画像)
                 # 常時１件のリスト
+                # TODO: 正方形ではなく 192x192 より小さな長方形 -> hand_info_np を事前に調整するロジックを書いて長辺で正方形になるようにクロップ領域を拡張する (Hand Landmarkには 224x224 の正方形で投入する必要があるため)
                 cropted_rotated_hands_images = rotate_and_crop_rectangle(
                     image=hand_image,
                     hand_info_nps=hand_info_np[np.newaxis, ...],
@@ -354,7 +380,11 @@ def run_inference_palm_detection(
                 hand_image_list.append(cropted_rotated_hands_images[0])
 
                 ################# debug
+                cv.putText(debug_image, f'{debug_image.shape[0]}x{debug_image.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 4, cv.LINE_AA)
+                cv.putText(debug_image, f'{debug_image.shape[0]}x{debug_image.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,128,255), 2, cv.LINE_AA)
                 cv.imshow(f'no_rotated', debug_image)
+                cv.putText(cropted_rotated_hands_images[0], f'{cropted_rotated_hands_images[0].shape[0]}x{cropted_rotated_hands_images[0].shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 4, cv.LINE_AA)
+                cv.putText(cropted_rotated_hands_images[0], f'{cropted_rotated_hands_images[0].shape[0]}x{cropted_rotated_hands_images[0].shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2, cv.LINE_AA)
                 cv.imshow(f'rotated', cropted_rotated_hands_images[0])
                 ################# debug
 
@@ -518,7 +548,15 @@ def main():
 
         elapsed_time = time.time() - start_time
 
-        # デバッグ描画
+        """
+        デバッグ描画
+
+        hand_info_list:
+            [元画像の中心座標X, 元画像の中心座標Y, 元画像スケールの手のひらの幅, 元画像スケールの手のひらの高さ, 回転角度]
+            ただし、バウンディングボックス全体の幅を2.9倍に拡張している
+            中心座標 [rcx, rcy] は2.9倍拡張の影響を受けていない
+            ただし、Palm Detection の推論に使用した画像を基準とした座標になっている
+        """
         debug_image = draw_debug(
             debug_image,
             elapsed_time,
@@ -527,6 +565,7 @@ def main():
             keypoints_with_scores,
             mirror,
             palm_detection_input_size,
+            hand_info_list,
         )
 
         # キー処理(ESC：終了) ##################################################
@@ -574,6 +613,7 @@ def draw_debug(
     keypoints_with_scores,
     mirror,
     palm_detection_input_size,
+    hand_info_list,
 ):
     debug_image = copy.deepcopy(image)
 
@@ -597,8 +637,6 @@ def draw_debug(
     54:bbox_y2
     55:bbox_score
     """
-
-    hand_images = []
     for idx, keypoints_with_score in enumerate(keypoints_with_scores):
         if keypoints_with_score[55] > bbox_score_th:
             # Line: bone
@@ -630,7 +668,7 @@ def draw_debug(
             bbox_y2 = int(keypoints_with_score[54])
             bbox_h = bbox_y2 - bbox_y1
 
-            # バウンディングボックス
+            # Personバウンディングボックス
             cv.rectangle(
                 debug_image,
                 (bbox_x1, bbox_y1),
@@ -646,9 +684,31 @@ def draw_debug(
                 2,
             )
 
-    # 手のひら検出
-    for hand_image in hand_images:
-        pass
+            """
+            手のひらバウンディングボックス描画
+            hand_info:
+                [元画像の中心座標X, 元画像の中心座標Y, 元画像スケールの手のひらの幅, 元画像スケールの手のひらの高さ, 回転角度]
+                ただし、バウンディングボックス全体の幅を2.9倍に拡張している
+                中心座標 [rcx, rcy] は2.9倍拡張の影響を受けていない
+                ただし、Palm Detection の推論に使用した画像を基準とした座標になっている
+            """
+            for hand_info in hand_info_list:
+                rcx = hand_info[0]
+                rcy = hand_info[1]
+                w = hand_info[2]
+                h = hand_info[3]
+                degree = hand_info[4]
+                bbox_x1 = int(rcx - w // 2)
+                bbox_y1 = int(rcy - h // 2)
+                bbox_x2 = int(rcx + w // 2)
+                bbox_y2 = int(rcy + h // 2)
+                cv.rectangle(
+                    debug_image,
+                    (bbox_x1, bbox_y1),
+                    (bbox_x2, bbox_y2),
+                    (0, 0, 255),
+                    2,
+                )
 
     # 処理時間
     txt = f"Elapsed Time : {elapsed_time * 1000:.1f} ms (inference + post-process)"
