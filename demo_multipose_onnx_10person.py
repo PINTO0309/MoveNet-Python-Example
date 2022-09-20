@@ -114,7 +114,7 @@ def run_inference_palm_detection(
     a. Palm Detectionは四方がパディングされて正方形になった元画像スケールの手のひら画像を 192x192 に縮小・拡大して推論している
     b. したがって、Palm Detectionの推論結果は元画像スケールが、パディングの影響と縮小・拡大の影響を受けた座標系になる
     c. Palm Detectionの結果を元画像の座標系に戻すためには、縮小・拡大の戻しをしたあとでパディング分を引き算する必要が有る（このとき減算するパディング値は [1]と[2]）
-    d. 後続の Hand Landmark検出モデルに投入するためだけに画像をストックする（なおこのときにストックする画像は正方形パディングされたうえで192x192に縮小・拡大され、さらに回転角をゼロ度に補正された画像）
+    d. 後続の Hand Landmark検出モデルに投入するためだけに画像をストックする（なおこのときにストックする画像はPalmDetectionの検出結果を正方形パディングしたうえで回転角をゼロ度に補正した画像, 192x192や224x224ではなく任意のサイズの正方形）
     e. hand_images と debug_image は 192x192 で BGR の画像のリスト
     """
     for idx, keypoints_with_score in enumerate(keypoints_with_scores):
@@ -384,9 +384,10 @@ def run_inference_palm_detection(
                 cv.putText(debug_image, f'{debug_image.shape[0]}x{debug_image.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 4, cv.LINE_AA)
                 cv.putText(debug_image, f'{debug_image.shape[0]}x{debug_image.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2, cv.LINE_AA)
                 cv.imshow(f'no_rotated', debug_image)
-                cv.putText(cropted_rotated_hands_images[0], f'{cropted_rotated_hands_images[0].shape[0]}x{cropted_rotated_hands_images[0].shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 4, cv.LINE_AA)
-                cv.putText(cropted_rotated_hands_images[0], f'{cropted_rotated_hands_images[0].shape[0]}x{cropted_rotated_hands_images[0].shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2, cv.LINE_AA)
-                cv.imshow(f'rotated', cropted_rotated_hands_images[0])
+                debug_cropted_rotated_hands_image = copy.deepcopy(cropted_rotated_hands_images[0])
+                cv.putText(debug_cropted_rotated_hands_image, f'{debug_cropted_rotated_hands_image.shape[0]}x{debug_cropted_rotated_hands_image.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 4, cv.LINE_AA)
+                cv.putText(debug_cropted_rotated_hands_image, f'{debug_cropted_rotated_hands_image.shape[0]}x{debug_cropted_rotated_hands_image.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2, cv.LINE_AA)
+                cv.imshow(f'rotated', debug_cropted_rotated_hands_image)
                 ################# debug
 
         # hand_info_list をListからnp.ndarrayに変換 [N, 5]
@@ -396,14 +397,91 @@ def run_inference_palm_detection(
     return batch_nums, score_cx_cy_w_wristcenterxy_middlefingerxys, hand_info_list, hand_image_list
 
 
+lines_hand = [
+    [0,1],[1,2],[2,3],[3,4],
+    [0,5],[5,6],[6,7],[7,8],
+    [5,9],[9,10],[10,11],[11,12],
+    [9,13],[13,14],[14,15],[15,16],
+    [13,17],[17,18],[18,19],[19,20],[0,17],
+]
+
 def run_inference_handlandmark_detection(
     onnx_session,
     input_height,
     input_width,
     input_name0,
-    image,
+    hand_image_list,
 ):
-    pass
+    """
+    hand_image_list
+        PalmDetectionの検出結果を正方形パディングしたうえで回転角をゼロ度に補正した画像のリスト, 192x192や224x224ではなく任意のサイズの正方形
+        画像のチャンネルオーダーはBGR
+        hand_landmark_detection モデルの入力は 224x224 なので、推論する前に全ての画像を224x224にリサイズする（パディングではなくリサイズ）
+    """
+
+    xyz_x21s = np.asarray([], dtype=np.float32)
+    hand_scores = np.asarray([], dtype=np.float32)
+    lefthand_0_or_righthand_1s = np.asarray([], dtype=np.float32)
+
+    if len(hand_image_list) > 0:
+        # 224x224リサイズ -> HWCtoCHW
+        resized_hand_image_list = [
+            cv.resize(hand_image, (input_width, input_height)) for hand_image in hand_image_list
+        ]
+        input_images = np.asarray(resized_hand_image_list, dtype=np.float32)
+        input_images = np.divide(input_images, 255.0)
+        input_images = input_images[..., ::-1]
+        input_images = input_images.transpose(0,3,1,2)
+
+        """
+        HandLandmark推論
+            xyz_x21: [hands, 63], xyz*21
+            hand_score: [hands, 1]
+            lefthand_0_or_righthand_1: [hands, 1]
+        """
+        xyz_x21s, hand_scores, lefthand_0_or_righthand_1s = onnx_session.run(
+            None,
+            {
+                input_name0: input_images,
+            }
+        )
+
+        ################# debug
+        debug_image = copy.deepcopy(hand_image_list[0])
+        debug_image = cv.resize(debug_image, (input_width, input_height))
+        xyz_x21 = xyz_x21s[0]
+        xy_x21 = xyz_x21.reshape([21, 3])[:, 0:2]
+
+        lines = np.asarray(
+            [
+                np.array([xy_x21[point] for point in line]).astype(np.int32) for line in lines_hand
+            ]
+        )
+        thick_coef = debug_image.shape[1] / 400
+        radius = int(1+thick_coef*5)
+        cv.polylines(
+            debug_image,
+            lines,
+            False,
+            (255, 0, 0),
+            int(radius),
+            cv.LINE_AA,
+        )
+        _ = [
+            cv.circle(
+                debug_image,
+                (int(x), int(y)),
+                3,
+                (0,128,255),
+                -1
+            ) for x, y in zip(xyz_x21[0::3], xyz_x21[1::3])
+        ]
+        cv.putText(debug_image, f'{debug_image.shape[0]}x{debug_image.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 4, cv.LINE_AA)
+        cv.putText(debug_image, f'{debug_image.shape[0]}x{debug_image.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2, cv.LINE_AA)
+        cv.imshow(f'landmark', debug_image)
+        ################# debug
+
+    return xyz_x21s, hand_scores, lefthand_0_or_righthand_1s
 
 
 def main():
@@ -526,6 +604,9 @@ def main():
         )
         batch_nums = np.asarray([])
         score_cx_cy_w_wristcenterxy_middlefingerxy = np.asarray([])
+        hand_info_list = []
+        hand_image_list = []
+
         if palm_square_crop:
             batch_nums, score_cx_cy_w_wristcenterxy_middlefingerxys, hand_info_list, hand_image_list = run_inference_palm_detection(
                 pd_onnx_session,
@@ -538,12 +619,12 @@ def main():
                 palm_detection_score_th,
                 mirror,
             )
-            run_inference_handlandmark_detection(
+            xyz_x21s, hand_scores, lefthand_0_or_righthand_1s = run_inference_handlandmark_detection(
                 hl_onnx_session,
                 hl_input_height,
                 hl_input_width,
                 hl_input_name0,
-                frame,
+                hand_image_list,
             )
 
 
