@@ -329,23 +329,36 @@ def run_inference_palm_detection(
                 )
                 ################# debug
 
+                # 中心座標, X1, y1, X2, y2 の計算 (正方形補正無しの長方形)
                 rcx = cx * hand_image_width
                 rcy = cy * hand_image_height
                 x1 = int((cx - 0.5 * extended_area_size) * hand_image_width)
                 y1 = int((cy - 0.5 * extended_area_size) * hand_image_height)
                 x2 = int((cx + 0.5 * extended_area_size) * hand_image_width)
                 y2 = int((cy + 0.5 * extended_area_size) * hand_image_height)
-                x1 = min(max(0, x1), hand_image_width)
-                y1 = min(max(0, y1), hand_image_height)
-                x2 = min(max(0, x2), hand_image_width)
-                y2 = min(max(0, y2), hand_image_height)
+
+                # 長辺で正方形補正 (補正後のサイズが奇数のときはパディング時に1pxズレるので偶数に強制補正する)
+                rw = x2 - x1
+                rh = y2 - y1
+                square_size = max(rw, rh)
+                if square_size % 2 == 1:
+                    square_size += 1
+                x1 = int(rcx - square_size // 2)
+                y1 = int(rcy - square_size // 2)
+                x2 = int(rcx + square_size // 2)
+                y2 = int(rcy + square_size // 2)
 
                 ################# debug
                 # Palm Detection で検出した手のひらのバウンディングボックス描画(回転非考慮), オレンジ色の枠
+                # (Debug描画用) 画角範囲外回避
+                dbx1 = min(max(0, x1), hand_image_width)
+                dby1 = min(max(0, y1), hand_image_height)
+                dbx2 = min(max(0, x2), hand_image_width)
+                dby2 = min(max(0, y2), hand_image_height)
                 cv.rectangle(
                     debug_image,
-                    (x1,y1),
-                    (x2,y2),
+                    (dbx1,dby1),
+                    (dbx2,dby2),
                     (0,128,255),
                     2,
                     cv.LINE_AA,
@@ -353,7 +366,7 @@ def run_inference_palm_detection(
                 ################# debug
 
                 # [元画像の中心座標X, 元画像の中心座標Y, 元画像スケールの手のひらの幅, 元画像スケールの手のひらの高さ, 回転角度]
-                # ただし、バウンディングボックス全体の幅を2.9倍に拡張している
+                # ただし、バウンディングボックス全体の幅が2.9倍に拡張され、長辺で正方形にパディングされている
                 # 中心座標 [rcx, rcy] は2.9倍拡張の影響を受けていない
                 # Palm Detection の推論に使用した画像を基準とした座標になっている
                 hand_info = [rcx, rcy, (x2-x1), (y2-y1), degree]
@@ -371,7 +384,6 @@ def run_inference_palm_detection(
 
                 # クロップ済み、かつ、回転角ゼロ度に調整された画像のリスト(Hand Landmark Detectionモデル入力用画像)
                 # 常時１件のリスト
-                # TODO: 正方形ではなく 192x192 より小さな長方形 -> hand_info_np を事前に調整するロジックを書いて長辺で正方形になるようにクロップ領域を拡張する (Hand Landmarkには 224x224 の正方形で投入する必要があるため)
                 cropted_rotated_hands_images = rotate_and_crop_rectangle(
                     image=hand_image,
                     hand_info_nps=hand_info_np[np.newaxis, ...],
