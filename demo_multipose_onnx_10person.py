@@ -302,17 +302,6 @@ def run_inference_palm_detection(
                 cy = cy - 0.5*w*cos(rotation)
                 degree = degrees(rotation) # radians to degrees
 
-                # sqn_rr_center_y = (sqn_rr_center_y * self.square_standard_size - self.square_padding_half_size) / image_height
-                # hands.append(
-                #     [
-                #         sqn_rr_size,
-                #         rotation,
-                #         sqn_rr_center_x,
-                #         sqn_rr_center_y,
-                #     ]
-                # )
-                # print(f'score:{score} cx:{cx} cy:{cy} sqn_rr_size:{sqn_rr_size} rotation:{rotation} sqn_rr_center_x:{sqn_rr_center_x} sqn_rr_center_y:{sqn_rr_center_y}')
-
                 hand_image_height = hand_image.shape[0]
                 hand_image_width = hand_image.shape[1]
 
