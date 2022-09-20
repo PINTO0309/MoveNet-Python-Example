@@ -382,7 +382,7 @@ def run_inference_palm_detection(
 
                 ################# debug
                 cv.putText(debug_image, f'{debug_image.shape[0]}x{debug_image.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 4, cv.LINE_AA)
-                cv.putText(debug_image, f'{debug_image.shape[0]}x{debug_image.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,128,255), 2, cv.LINE_AA)
+                cv.putText(debug_image, f'{debug_image.shape[0]}x{debug_image.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2, cv.LINE_AA)
                 cv.imshow(f'no_rotated', debug_image)
                 cv.putText(cropted_rotated_hands_images[0], f'{cropted_rotated_hands_images[0].shape[0]}x{cropted_rotated_hands_images[0].shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 4, cv.LINE_AA)
                 cv.putText(cropted_rotated_hands_images[0], f'{cropted_rotated_hands_images[0].shape[0]}x{cropted_rotated_hands_images[0].shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2, cv.LINE_AA)
