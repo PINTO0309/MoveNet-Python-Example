@@ -684,31 +684,31 @@ def draw_debug(
                 2,
             )
 
-            """
-            手のひらバウンディングボックス描画
-            hand_info:
-                [元画像の中心座標X, 元画像の中心座標Y, 元画像スケールの手のひらの幅, 元画像スケールの手のひらの高さ, 回転角度]
-                ただし、バウンディングボックス全体の幅を2.9倍に拡張している
-                中心座標 [rcx, rcy] は2.9倍拡張の影響を受けていない
-                ただし、Palm Detection の推論に使用した画像を基準とした座標になっている
-            """
-            for hand_info in hand_info_list:
-                rcx = hand_info[0]
-                rcy = hand_info[1]
-                w = hand_info[2]
-                h = hand_info[3]
-                degree = hand_info[4]
-                bbox_x1 = int(rcx - w // 2)
-                bbox_y1 = int(rcy - h // 2)
-                bbox_x2 = int(rcx + w // 2)
-                bbox_y2 = int(rcy + h // 2)
-                cv.rectangle(
-                    debug_image,
-                    (bbox_x1, bbox_y1),
-                    (bbox_x2, bbox_y2),
-                    (0, 0, 255),
-                    2,
-                )
+            # """
+            # 手のひらバウンディングボックス描画
+            # hand_info:
+            #     [元画像の中心座標X, 元画像の中心座標Y, 元画像スケールの手のひらの幅, 元画像スケールの手のひらの高さ, 回転角度]
+            #     ただし、バウンディングボックス全体の幅を2.9倍に拡張している
+            #     中心座標 [rcx, rcy] は2.9倍拡張の影響を受けていない
+            #     ただし、Palm Detection の推論に使用した画像を基準とした座標になっている
+            # """
+            # for hand_info in hand_info_list:
+            #     rcx = hand_info[0]
+            #     rcy = hand_info[1]
+            #     w = hand_info[2]
+            #     h = hand_info[3]
+            #     degree = hand_info[4]
+            #     bbox_x1 = int(rcx - w // 2)
+            #     bbox_y1 = int(rcy - h // 2)
+            #     bbox_x2 = int(rcx + w // 2)
+            #     bbox_y2 = int(rcy + h // 2)
+            #     cv.rectangle(
+            #         debug_image,
+            #         (bbox_x1, bbox_y1),
+            #         (bbox_x2, bbox_y2),
+            #         (0, 0, 255),
+            #         2,
+            #     )
 
     # 処理時間
     txt = f"Elapsed Time : {elapsed_time * 1000:.1f} ms (inference + post-process)"
