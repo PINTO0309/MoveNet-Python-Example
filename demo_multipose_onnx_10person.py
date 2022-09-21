@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import os
 import copy
 import time
 import argparse
@@ -10,9 +11,7 @@ from math import (
     sin,
     cos,
     floor,
-    degrees,
 )
-
 import cv2 as cv
 import numpy as np
 import onnxruntime
@@ -25,16 +24,18 @@ from utils import (
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--device", type=int, default=0)
-    parser.add_argument("--file", type=str, default=None)
-    parser.add_argument("--width", help='cap width', type=int, default=640)
-    parser.add_argument("--height", help='cap height', type=int, default=480)
-    parser.add_argument('--mirror', action='store_true')
-    parser.add_argument("--keypoint_score", type=float, default=0.20)
-    parser.add_argument("--bbox_score", type=float, default=0.20)
-    parser.add_argument("--palm_square_crop", action='store_true')
-    parser.add_argument("--palm_detection_input_size", choices=[128, 192], type=int, default=192)
-    parser.add_argument("--palm_detection_score", type=float, default=0.60)
+    parser.add_argument("-cn", "--camno", type=int, default=0)
+    parser.add_argument("-f", "--file", type=str, default=None)
+    parser.add_argument("-cw", "--width", help="cap width", type=int, default=640)
+    parser.add_argument("-ch", "--height", help="cap height", type=int, default=480)
+    parser.add_argument("-m", "--mirror", action="store_true")
+    parser.add_argument("-kpst", "--keypoint_score_threshold", type=float, default=0.20)
+    parser.add_argument("-bbst", "--bbox_score_threshold", type=float, default=0.20)
+    parser.add_argument("-c", "--palm_square_crop", action="store_true")
+    parser.add_argument("-pdis", "--palm_detection_input_size", choices=[128, 192], type=int, default=192)
+    parser.add_argument("-pdst", "--palm_detection_score_threshold", type=float, default=0.30)
+    parser.add_argument("-hlst", "--hand_landmark_score_threshold", type=float, default=0.20)
+    parser.add_argument("-d", "--debug", action="store_true")
     args = parser.parse_args()
     return args
 
@@ -79,6 +80,7 @@ def run_inference_movenet(
     keypoints_with_scores = np.squeeze(keypoints_with_scores)
     return keypoints_with_scores
 
+
 def run_inference_palm_detection(
     onnx_session,
     input_height,
@@ -89,6 +91,7 @@ def run_inference_palm_detection(
     bbox_score_th,
     palm_detection_score_th,
     mirror,
+    debug,
 ):
     image_width = np.asarray(image.shape[1], dtype=np.int64)
     image_height = np.asarray(image.shape[0], dtype=np.int64)
@@ -96,32 +99,13 @@ def run_inference_palm_detection(
     batch_nums = np.asarray([])
     score_cx_cy_w_wristcenterxy_middlefingerxys = np.asarray([])
     hand_images = []
+    prefocused_area_info_list = []
 
-    """
-    MoveNet の骨格検出結果をもとに手のひらの位置を予想しつつ以下のことを行う
-    1. 元画像から左手部分の画像をクロップ
-    2. クロップした左手画像が正方形になるように四方をパディング
-    3. 元画像から右手部分の画像をクロップ
-    4. クロップした右手画像が正方形になるように四方をパディング
-    5. 切り取ってパディングされた左手と右手の画像はhand_imagesにスタック
-        ココから後ろの処理は全てパディング済みの座標系をもとに行われるので、
-        元の座標系に戻すときに左手と右手の左側パディングサイズと上側パディングサイズが必要となる
-        検出結果の座標からパディングサイズの左側と上側それぞれから引き算をすることで元の座標系と一致する
-        記憶するパディングサイズは下記基準で簡易的に計算する
-            [1] 左側パディング = (パディング後の画像全体幅 - パディング前の画像全体幅) // 2
-            [2] 上側パディング = (パディング後の画像全体高さ - パディング前の画像全体高さ) // 2
-
-    a. Palm Detectionは四方がパディングされて正方形になった元画像スケールの手のひら画像を 192x192 に縮小・拡大して推論している
-    b. したがって、Palm Detectionの推論結果は元画像スケールが、パディングの影響と縮小・拡大の影響を受けた座標系になる
-    c. Palm Detectionの結果を元画像の座標系に戻すためには、縮小・拡大の戻しをしたあとでパディング分を引き算する必要が有る（このとき減算するパディング値は [1]と[2]）
-    d. 後続の Hand Landmark検出モデルに投入するためだけに画像をストックする（なおこのときにストックする画像はPalmDetectionの検出結果を正方形パディングしたうえで回転角をゼロ度に補正した画像, 192x192や224x224ではなく任意のサイズの正方形）
-    e. hand_images と debug_image は 192x192 で BGR の画像のリスト
-    """
-    for idx, keypoints_with_score in enumerate(keypoints_with_scores):
+    for keypoints_with_score in keypoints_with_scores:
         if keypoints_with_score[55] > bbox_score_th:
-            bbox_x1 = int(keypoints_with_score[51])
+            # bbox_x1 = int(keypoints_with_score[51])
             bbox_y1 = int(keypoints_with_score[52])
-            bbox_x2 = int(keypoints_with_score[53])
+            # bbox_x2 = int(keypoints_with_score[53])
             bbox_y2 = int(keypoints_with_score[54])
             bbox_h = bbox_y2 - bbox_y1
             """
@@ -205,8 +189,13 @@ def run_inference_palm_detection(
             wrist_left_y2 = int(min(max(0, wrist_left_y2), image_height))
             # 四方をパディングして正方形にした画像の取得
             square_crop_size = max(wrist_left_x2 - wrist_left_x1, wrist_left_y2 - wrist_left_y1)
+            croped_image = image[wrist_left_y1:wrist_left_y2, wrist_left_x1:wrist_left_x2, :]
+
+            base_width = wrist_left_x2 - wrist_left_x1
+            base_height = wrist_left_y2 - wrist_left_y1
+
             left_padded_image = pad_image(
-                image=image[wrist_left_y1:wrist_left_y2, wrist_left_x1:wrist_left_x2, :],
+                image=croped_image,
                 resize_width=square_crop_size,
                 resize_height=square_crop_size,
             )
@@ -216,6 +205,16 @@ def run_inference_palm_detection(
                     dsize=(input_width, input_height),
                 )
                 hand_images.append(left_padded_image_resized)
+                hand_image_scale_ratio = (wrist_left_x2 - wrist_left_x1) / left_padded_image_resized.shape[1]
+                prefocused_area_info_list.append(
+                    [
+                        base_width, # 画像リサイズ前の全体の幅
+                        base_height, # 画像リサイズ前の全体の高さ
+                        wrist_left_x1, # 画像リサイズ前のX1
+                        wrist_left_y1, # 画像リサイズ前のY1
+                        hand_image_scale_ratio, # キーポイントをもとの座標に戻すときの上下倍率
+                    ]
+                )
 
             ############################################################## 右手
             # 左肘と左手首のX座標位置関係
@@ -251,8 +250,13 @@ def run_inference_palm_detection(
             wrist_right_y2 = int(min(max(0, wrist_right_y2), image_height))
             # 四方をパディングして正方形にした画像の取得
             square_crop_size = max(wrist_right_x2 - wrist_right_x1, wrist_right_y2 - wrist_right_y1)
+            croped_image = image[wrist_right_y1:wrist_right_y2, wrist_right_x1:wrist_right_x2, :]
+
+            base_width = wrist_right_x2 - wrist_right_x1
+            base_height = wrist_right_y2 - wrist_right_y1
+
             right_padded_image = pad_image(
-                image=image[wrist_right_y1:wrist_right_y2, wrist_right_x1:wrist_right_x2, :],
+                image=croped_image,
                 resize_width=square_crop_size,
                 resize_height=square_crop_size,
             )
@@ -262,16 +266,29 @@ def run_inference_palm_detection(
                     dsize=(input_width, input_height),
                 )
                 hand_images.append(right_padded_image_resized)
+                hand_image_scale_ratio = (wrist_right_x2 - wrist_right_x1) / right_padded_image_resized.shape[1]
+                prefocused_area_info_list.append(
+                    [
+                        base_width, # 画像リサイズ前の全体の幅
+                        base_height, # 画像リサイズ前の全体の高さ
+                        wrist_right_x1, # 画像リサイズ前のX1
+                        wrist_right_y1, # 画像リサイズ前のY1
+                        hand_image_scale_ratio, # キーポイントをもとの座標に戻すときの上下倍率
+                    ]
+                )
 
 
     hand_info_list = []
     hand_image_list = []
+
     if len(hand_images) > 0:
         input_images = copy.deepcopy(hand_images)
         input_images = np.asarray(input_images, dtype=np.float32)
         input_images = input_images / 255.0
         input_images = input_images[..., ::-1]
         input_images = input_images.transpose(0,3,1,2)
+
+        # Palm Detection
         batch_nums, score_cx_cy_w_wristcenterxy_middlefingerxys = onnx_session.run(
             None,
             {
@@ -282,15 +299,16 @@ def run_inference_palm_detection(
         score_cx_cy_w_wristcenterxy_middlefingerxys = score_cx_cy_w_wristcenterxy_middlefingerxys[keep, :]
         batch_nums = batch_nums[keep, :]
         hand_images = [hand_images[int(idx)] for idx in batch_nums]
+        prefocused_area_info_list = [prefocused_area_info_list[int(idx)] for idx in batch_nums]
 
         for hand_image, score_cx_cy_w_wristcenterxy_middlefingerxy in zip(hand_images, score_cx_cy_w_wristcenterxy_middlefingerxys):
-            cx = score_cx_cy_w_wristcenterxy_middlefingerxy[1]
-            cy = score_cx_cy_w_wristcenterxy_middlefingerxy[2]
-            w = score_cx_cy_w_wristcenterxy_middlefingerxy[3]
-            wrist_center_x = score_cx_cy_w_wristcenterxy_middlefingerxy[4]
-            wrist_center_y = score_cx_cy_w_wristcenterxy_middlefingerxy[5]
-            middlefinger_x = score_cx_cy_w_wristcenterxy_middlefingerxy[6]
-            middlefinger_y = score_cx_cy_w_wristcenterxy_middlefingerxy[7]
+            cx_pd = score_cx_cy_w_wristcenterxy_middlefingerxy[1] # 192x192画像内を基準とした相対座標の中心座標X
+            cy_pd = score_cx_cy_w_wristcenterxy_middlefingerxy[2] # 192x192画像内を基準とした相対座標の中心座標Y
+            w = score_cx_cy_w_wristcenterxy_middlefingerxy[3] # 192x192画像内を基準としたwidth
+            wrist_center_x = score_cx_cy_w_wristcenterxy_middlefingerxy[4] # 192x192画像内を基準とした手首座標X
+            wrist_center_y = score_cx_cy_w_wristcenterxy_middlefingerxy[5] # 192x192画像内を基準とした手首座標Y
+            middlefinger_x = score_cx_cy_w_wristcenterxy_middlefingerxy[6] # 192x192画像内を基準とした中指座標X
+            middlefinger_y = score_cx_cy_w_wristcenterxy_middlefingerxy[7] # 192x192画像内を基準とした中指座標Y
 
             if w > 0:
                 kp02_x = middlefinger_x - wrist_center_x
@@ -298,25 +316,11 @@ def run_inference_palm_detection(
                 extended_area_size = 2.9 * w
                 rotation = 0.5 * pi - atan2(-kp02_y, kp02_x) # radians
                 rotation = normalize_radians(rotation)
-                cx = cx + 0.5*w*sin(rotation)
-                cy = cy - 0.5*w*cos(rotation)
-                degree = degrees(rotation) # radians to degrees
-
+                cx = cx_pd + 0.5*w*sin(rotation)
+                cy = cy_pd - 0.5*w*cos(rotation)
+                degree = np.rad2deg(rotation) # radians to degrees
                 hand_image_height = hand_image.shape[0]
                 hand_image_width = hand_image.shape[1]
-
-                debug_image = copy.deepcopy(hand_image)
-
-                ################# debug
-                # Palm Detection で検出した手のひらの中心点の描画
-                cv.circle(
-                    debug_image,
-                    (int(cx*hand_image_width), int(cy*hand_image_height)),
-                    3,
-                    (0, 0, 255),
-                    -1
-                )
-                ################# debug
 
                 # 中心座標, X1, y1, X2, y2 の計算 (正方形補正無しの長方形)
                 rcx = cx * hand_image_width
@@ -337,39 +341,22 @@ def run_inference_palm_detection(
                 x2 = int(rcx + square_size // 2)
                 y2 = int(rcy + square_size // 2)
 
-                ################# debug
-                # Palm Detection で検出した手のひらのバウンディングボックス描画(回転非考慮), オレンジ色の枠
-                # (Debug描画用) 画角範囲外回避
-                dbx1 = min(max(0, x1), hand_image_width)
-                dby1 = min(max(0, y1), hand_image_height)
-                dbx2 = min(max(0, x2), hand_image_width)
-                dby2 = min(max(0, y2), hand_image_height)
-                cv.rectangle(
-                    debug_image,
-                    (dbx1,dby1),
-                    (dbx2,dby2),
-                    (0,128,255),
-                    2,
-                    cv.LINE_AA,
+                hand_info_list.append(
+                    [
+                        int(rcx), # 手のひらバウンディングボックスの中心座標X (192x192スケール)
+                        int(rcy), # 手のひらバウンディングボックスの中心座標Y (192x192スケール)
+                        square_size, # 手のひらバウンディングボックスの幅と高さ (192x192スケール)
+                        degree, # 手のひらバウンディングボックスの回転角 (192x192スケール)
+                    ]
                 )
-                ################# debug
 
-                # [元画像の中心座標X, 元画像の中心座標Y, 元画像スケールの手のひらの幅, 元画像スケールの手のひらの高さ, 回転角度]
+                # 192x192画像は元画像とほぼ同じスケール
+                # [192x192画像内で検出した手のひらの中心座標X, 192x192画像内で検出した手のひらの中心座標Y,
+                # 192x192画像スケールの手のひらの幅, 192x192画像スケールの手のひらの高さ, 回転角度]
                 # ただし、バウンディングボックス全体の幅が2.9倍に拡張され、長辺で正方形にパディングされている
                 # 中心座標 [rcx, rcy] は2.9倍拡張の影響を受けていない
                 # Palm Detection の推論に使用した画像を基準とした座標になっている
-                hand_info = [rcx, rcy, (x2-x1), (y2-y1), degree]
-                hand_info_list.append(hand_info)
-                hand_info_np = np.asarray(hand_info, dtype=np.float32)
-
-                ################# debug
-                # 回転を考慮したバウンディングボックスの描画, 赤色の枠
-                hand_info_tuple = ((hand_info_np[0], hand_info_np[1]), (hand_info_np[2], hand_info_np[3]), hand_info_np[4])
-                box = cv.boxPoints(hand_info_tuple).astype(np.int0)
-                cv.drawContours(debug_image, [box], 0,(0,0,255), 2, cv.LINE_AA)
-                cv.putText(debug_image, f'{int(hand_info_np[3])}x{int(hand_info_np[2])}', (5,40), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 4, cv.LINE_AA)
-                cv.putText(debug_image, f'{int(hand_info_np[3])}x{int(hand_info_np[2])}', (5,40), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2, cv.LINE_AA)
-                ################# debug
+                hand_info_np = np.asarray([rcx, rcy, (x2-x1), (y2-y1), degree], dtype=np.float32)
 
                 # クロップ済み、かつ、回転角ゼロ度に調整された画像のリスト(Hand Landmark Detectionモデル入力用画像)
                 # 常時１件のリスト
@@ -381,20 +368,36 @@ def run_inference_palm_detection(
                 hand_image_list.append(cropted_rotated_hands_images[0])
 
                 ################# debug
-                cv.putText(debug_image, f'{debug_image.shape[0]}x{debug_image.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 4, cv.LINE_AA)
-                cv.putText(debug_image, f'{debug_image.shape[0]}x{debug_image.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2, cv.LINE_AA)
-                cv.imshow(f'no_rotated', debug_image)
-                debug_cropted_rotated_hands_image = copy.deepcopy(cropted_rotated_hands_images[0])
-                cv.putText(debug_cropted_rotated_hands_image, f'{debug_cropted_rotated_hands_image.shape[0]}x{debug_cropted_rotated_hands_image.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 4, cv.LINE_AA)
-                cv.putText(debug_cropted_rotated_hands_image, f'{debug_cropted_rotated_hands_image.shape[0]}x{debug_cropted_rotated_hands_image.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2, cv.LINE_AA)
-                cv.imshow(f'rotated', debug_cropted_rotated_hands_image)
+                if debug:
+                    debug_image = copy.deepcopy(hand_image)
+                    cv.circle(debug_image, (int(cx*hand_image_width), int(cy*hand_image_height)), 3, (0, 0, 255), -1)
+                    dbx1 = min(max(0, x1), hand_image_width)
+                    dby1 = min(max(0, y1), hand_image_height)
+                    dbx2 = min(max(0, x2), hand_image_width)
+                    dby2 = min(max(0, y2), hand_image_height)
+                    cv.rectangle(debug_image, (dbx1,dby1), (dbx2,dby2), (0,128,255), 2, cv.LINE_AA)
+                    cv.putText(debug_image, f'({(dby1+dby2)//2},{(dbx1+dbx2)//2})', (dbx1, 60), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv.LINE_AA)
+
+                    hand_info_tuple = ((hand_info_np[0], hand_info_np[1]), (hand_info_np[2], hand_info_np[3]), hand_info_np[4])
+                    box = cv.boxPoints(hand_info_tuple).astype(np.int0)
+                    cv.drawContours(debug_image, [box], 0,(0,0,255), 2, cv.LINE_AA)
+                    cv.putText(debug_image, f'{int(hand_info_np[3])}x{int(hand_info_np[2])}', (5,40), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 4, cv.LINE_AA)
+                    cv.putText(debug_image, f'{int(hand_info_np[3])}x{int(hand_info_np[2])}', (5,40), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2, cv.LINE_AA)
+                    cv.putText(debug_image, f'{debug_image.shape[0]}x{debug_image.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 4, cv.LINE_AA)
+                    cv.putText(debug_image, f'{debug_image.shape[0]}x{debug_image.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2, cv.LINE_AA)
+                    cv.imshow(f'no_rotated', debug_image)
+                    debug_cropted_rotated_hands_image = copy.deepcopy(cropted_rotated_hands_images[0])
+                    cv.putText(debug_cropted_rotated_hands_image, f'{debug_cropted_rotated_hands_image.shape[0]}x{debug_cropted_rotated_hands_image.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 4, cv.LINE_AA)
+                    cv.putText(debug_cropted_rotated_hands_image, f'{debug_cropted_rotated_hands_image.shape[0]}x{debug_cropted_rotated_hands_image.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2, cv.LINE_AA)
+                    cv.imshow(f'rotated', debug_cropted_rotated_hands_image)
                 ################# debug
 
-        # hand_info_list をListからnp.ndarrayに変換 [N, 5]
-        # [元画像の中心座標X, 元画像の中心座標Y, 元画像スケールの手のひらの幅, 元画像スケールの手のひらの高さ, 回転角度]
-        hand_info_list = np.asarray(hand_info_list, dtype=np.float32)
-
-    return batch_nums, score_cx_cy_w_wristcenterxy_middlefingerxys, hand_info_list, hand_image_list
+    return \
+        batch_nums, \
+        score_cx_cy_w_wristcenterxy_middlefingerxys, \
+        hand_info_list, \
+        hand_image_list, \
+        prefocused_area_info_list
 
 
 lines_hand = [
@@ -405,21 +408,29 @@ lines_hand = [
     [13,17],[17,18],[18,19],[19,20],[0,17],
 ]
 
+
 def run_inference_handlandmark_detection(
     onnx_session,
     input_height,
     input_width,
     input_name0,
     hand_image_list,
+    debug,
 ):
     """
     hand_image_list
         PalmDetectionの検出結果を正方形パディングしたうえで回転角をゼロ度に補正した画像のリスト, 192x192や224x224ではなく任意のサイズの正方形
         画像のチャンネルオーダーはBGR
         hand_landmark_detection モデルの入力は 224x224 なので、推論する前に全ての画像を224x224にリサイズする（パディングではなくリサイズ）
+        返却値は元入力画像のスケール値に戻す
+
+    xy_x21s: [N, 21, 2], N*21*[x, y]
+    hand_scores: [N, 1]
+    lefthand_0_or_righthand_1s: [N, 1]
     """
 
     xyz_x21s = np.asarray([], dtype=np.float32)
+    xy_x21s = np.asarray([], dtype=np.float32)
     hand_scores = np.asarray([], dtype=np.float32)
     lefthand_0_or_righthand_1s = np.asarray([], dtype=np.float32)
 
@@ -427,6 +438,10 @@ def run_inference_handlandmark_detection(
         # 224x224リサイズ -> HWCtoCHW
         resized_hand_image_list = [
             cv.resize(hand_image, (input_width, input_height)) for hand_image in hand_image_list
+        ]
+        # リサイズスケールの計算
+        resized_hand_image_scale_list = [
+            hand_image.shape[0] / resized_hand_image.shape[0] for resized_hand_image, hand_image in zip(resized_hand_image_list, hand_image_list)
         ]
         input_images = np.asarray(resized_hand_image_list, dtype=np.float32)
         input_images = np.divide(input_images, 255.0)
@@ -445,70 +460,91 @@ def run_inference_handlandmark_detection(
                 input_name0: input_images,
             }
         )
+        xy_x21s = xyz_x21s.reshape([-1, 21, 3])[..., 0:2] # [N, 63] -> [N, 21, XYZ] -> [N, 21, XY]
+        xy_x21s = xy_x21s * np.asarray(resized_hand_image_scale_list).reshape([-1, 1, 1]) # 入力画像のスケールに戻す
 
         ################# debug
-        debug_image = copy.deepcopy(hand_image_list[0])
-        debug_image = cv.resize(debug_image, (input_width, input_height))
-        xyz_x21 = xyz_x21s[0]
-        xy_x21 = xyz_x21.reshape([21, 3])[:, 0:2]
-
-        lines = np.asarray(
-            [
-                np.array([xy_x21[point] for point in line]).astype(np.int32) for line in lines_hand
+        if debug:
+            # リスケール前
+            debug_image1 = copy.deepcopy(hand_image_list[0])
+            debug_image1 = cv.resize(debug_image1, (input_width, input_height))
+            dxyz_x21 = copy.deepcopy(xyz_x21s[0])
+            dxy_x21 = dxyz_x21.reshape([21, 3])[..., 0:2]
+            lines = np.asarray(
+                [
+                    np.array([dxy_x21[point] for point in line]).astype(np.int32) for line in lines_hand
+                ]
+            )
+            thick_coef = debug_image1.shape[1] / 400
+            radius = int(1+thick_coef*5)
+            cv.polylines(debug_image1, lines, False, (255, 0, 0), int(radius), cv.LINE_AA)
+            _ = [
+                cv.circle(debug_image1, (int(x), int(y)), 3, (0,128,255), -1) \
+                    for x, y in zip(dxy_x21[..., 0::2], dxy_x21[..., 1::2])
             ]
-        )
-        thick_coef = debug_image.shape[1] / 400
-        radius = int(1+thick_coef*5)
-        cv.polylines(
-            debug_image,
-            lines,
-            False,
-            (255, 0, 0),
-            int(radius),
-            cv.LINE_AA,
-        )
-        _ = [
-            cv.circle(
-                debug_image,
-                (int(x), int(y)),
-                3,
-                (0,128,255),
-                -1
-            ) for x, y in zip(xyz_x21[0::3], xyz_x21[1::3])
-        ]
-        cv.putText(debug_image, f'{debug_image.shape[0]}x{debug_image.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 4, cv.LINE_AA)
-        cv.putText(debug_image, f'{debug_image.shape[0]}x{debug_image.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2, cv.LINE_AA)
-        cv.imshow(f'landmark', debug_image)
+            cv.putText(debug_image1, f'{debug_image1.shape[0]}x{debug_image1.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 4, cv.LINE_AA)
+            cv.putText(debug_image1, f'{debug_image1.shape[0]}x{debug_image1.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2, cv.LINE_AA)
+            cv.imshow(f'landmark', debug_image1)
+
+            # リスケール後
+            debug_image2 = copy.deepcopy(hand_image_list[0])
+            debug_image2 = cv.resize(debug_image2, (input_width, input_height))
+            resized_hand_image_scale = resized_hand_image_scale_list[0]
+            debug_image2 = cv.resize(debug_image2, (int(input_width * resized_hand_image_scale), int(input_height * resized_hand_image_scale)))
+            dxyz_x21 = copy.deepcopy(xyz_x21s[0])
+            dxy_x21 = dxyz_x21.reshape([21, 3])[:, 0:2]
+            dxy_x21 = dxy_x21 * resized_hand_image_scale
+            lines = np.asarray(
+                [
+                    np.array([dxy_x21[point] for point in line]).astype(np.int32) for line in lines_hand
+                ]
+            )
+            thick_coef = debug_image2.shape[1] / 400
+            radius = int(1+thick_coef*5)
+            cv.polylines(debug_image2, lines, False, (255, 0, 0), int(radius), cv.LINE_AA)
+            _ = [
+                cv.circle(debug_image2, (int(x), int(y)), 3, (0,128,255), -1) \
+                    for x, y in zip(dxy_x21[..., 0::2], dxy_x21[..., 1::2])
+            ]
+            cv.putText(debug_image2, f'{debug_image2.shape[0]}x{debug_image2.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 4, cv.LINE_AA)
+            cv.putText(debug_image2, f'{debug_image2.shape[0]}x{debug_image2.shape[1]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2, cv.LINE_AA)
+            cv.imshow(f'rescaled_landmark', debug_image2)
         ################# debug
 
-    return xyz_x21s, hand_scores, lefthand_0_or_righthand_1s
+    return xy_x21s, hand_scores, lefthand_0_or_righthand_1s
 
 
 def main():
     # 引数解析 #################################################################
     args = get_args()
-    cap_device = args.device
+    cap_device = args.camno
 
     if args.file is not None:
         cap_device = args.file
 
     cap = cv.VideoCapture(cap_device)
 
+    waittime = 1
     if args.file is not None:
         cap_width = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
         cap_height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+        if os.path.splitext(args.file)[1][1:].lower() in ['jpg', 'png']:
+            waittime = 0
     else:
         cap_width = args.width
         cap_height = args.height
         cap.set(cv.CAP_PROP_FRAME_WIDTH, cap_width)
         cap.set(cv.CAP_PROP_FRAME_HEIGHT, cap_height)
+        waittime = 1
 
     mirror = args.mirror
-    keypoint_score_th = args.keypoint_score
-    bbox_score_th = args.bbox_score
+    keypoint_score_th = args.keypoint_score_threshold
+    bbox_score_th = args.bbox_score_threshold
     palm_square_crop = args.palm_square_crop
     palm_detection_input_size = args.palm_detection_input_size
-    palm_detection_score_th = args.palm_detection_score
+    palm_detection_score_th = args.palm_detection_score_threshold
+    hand_landmark_score_th = args.hand_landmark_score_threshold
+    debug = args.debug
 
     # カメラ準備 ###############################################################
     cap_fps = cap.get(cv.CAP_PROP_FPS)
@@ -548,13 +584,13 @@ def main():
     pd_onnx_session = onnxruntime.InferenceSession(
         pd_model_path,
         providers=[
-            # (
-            #     'TensorrtExecutionProvider', {
-            #         'trt_engine_cache_enable': True,
-            #         'trt_engine_cache_path': '.',
-            #         'trt_fp16_enable': True,
-            #     }
-            # ),
+            (
+                'TensorrtExecutionProvider', {
+                    'trt_engine_cache_enable': True,
+                    'trt_engine_cache_path': '.',
+                    'trt_fp16_enable': True,
+                }
+            ),
             'CUDAExecutionProvider',
             'CPUExecutionProvider',
         ],
@@ -567,13 +603,13 @@ def main():
     hl_onnx_session = onnxruntime.InferenceSession(
         hl_model_path,
         providers=[
-            # (
-            #     'TensorrtExecutionProvider', {
-            #         'trt_engine_cache_enable': True,
-            #         'trt_engine_cache_path': '.',
-            #         'trt_fp16_enable': True,
-            #     }
-            # ),
+            (
+                'TensorrtExecutionProvider', {
+                    'trt_engine_cache_enable': True,
+                    'trt_engine_cache_path': '.',
+                    'trt_fp16_enable': True,
+                }
+            ),
             'CUDAExecutionProvider',
             'CPUExecutionProvider',
         ],
@@ -602,13 +638,24 @@ def main():
             mn_input_name2,
             frame,
         )
-        batch_nums = np.asarray([])
-        score_cx_cy_w_wristcenterxy_middlefingerxy = np.asarray([])
-        hand_info_list = []
+
+        keypoints_with_scores = [
+            keypoints_with_score \
+                for keypoints_with_score in keypoints_with_scores \
+                    if keypoints_with_score[55] >= keypoint_score_th
+        ]
+
+        # batch_nums = np.asarray([])
+        # score_cx_cy_w_wristcenterxy_middlefingerxy = np.asarray([])
         hand_image_list = []
+        xy_x21s = np.asarray([])
 
         if palm_square_crop:
-            batch_nums, score_cx_cy_w_wristcenterxy_middlefingerxys, hand_info_list, hand_image_list = run_inference_palm_detection(
+            batch_nums, \
+            score_cx_cy_w_wristcenterxy_middlefingerxys, \
+            hand_info_list, \
+            hand_image_list, \
+            prefocused_area_info_list = run_inference_palm_detection(
                 pd_onnx_session,
                 pd_input_height,
                 pd_input_width,
@@ -618,27 +665,69 @@ def main():
                 bbox_score_th,
                 palm_detection_score_th,
                 mirror,
+                debug,
             )
-            xyz_x21s, hand_scores, lefthand_0_or_righthand_1s = run_inference_handlandmark_detection(
+
+            hand_image_list = []
+            for prefocused_area_info, hand_info in zip(prefocused_area_info_list, hand_info_list):
+                base_width, base_height, wrist_x1, wrist_y1, hand_image_scale_ratio = prefocused_area_info
+                # 手のひら検出された結果を全体画像の座標系に再スケーリング
+                pd_cx, pd_cy, pd_square_size, pd_degree = hand_info
+                pd_scaled_cx = pd_cx * hand_image_scale_ratio
+                pd_scaled_cy = pd_cy * hand_image_scale_ratio
+                pd_scaled_square_size = pd_square_size * hand_image_scale_ratio
+                pd_scaled_x1 = wrist_x1 + int(pd_scaled_cx - pd_scaled_square_size // 2)
+                pd_scaled_y1 = wrist_y1 + int(pd_scaled_cy - pd_scaled_square_size // 2)
+                pd_scaled_x2 = wrist_x1 + int(pd_scaled_cx + pd_scaled_square_size // 2)
+                pd_scaled_y2 = wrist_y1 +int(pd_scaled_cy + pd_scaled_square_size // 2)
+                # 回転角をゼロ度に補正した手のひら画像の切り出し
+                hand_image = debug_image[pd_scaled_y1:pd_scaled_y2, pd_scaled_x1:pd_scaled_x2, :]
+                if hand_image.shape[0] > 0 and hand_image.shape[1] > 0:
+                    hand_info_np = np.asarray([[
+                        pd_scaled_square_size//2,
+                        pd_scaled_square_size//2,
+                        pd_scaled_square_size,
+                        pd_scaled_square_size,
+                        pd_degree,
+                    ]], dtype=np.float32)
+                    cropted_rotated_hands_images = rotate_and_crop_rectangle(
+                        image=hand_image,
+                        hand_info_nps=hand_info_np,
+                        operation_when_cropping_out_of_range='padding',
+                    )
+                    hand_image_list.append(cropted_rotated_hands_images[0])
+
+            xy_x21s, \
+            hand_landmark_scores, \
+            lefthand_0_or_righthand_1s = run_inference_handlandmark_detection(
                 hl_onnx_session,
                 hl_input_height,
                 hl_input_width,
                 hl_input_name0,
                 hand_image_list,
+                debug,
             )
+
+        xy_x21s = [
+            xy_x21 \
+                for xy_x21, hand_landmark_score in zip(xy_x21s, hand_landmark_scores) \
+                    if hand_landmark_score >= hand_landmark_score_th
+        ]
+        hand_info_list = [
+            hand_info \
+                for hand_info, hand_landmark_score in zip(hand_info_list, hand_landmark_scores) \
+                    if hand_landmark_score >= hand_landmark_score_th
+        ]
+        prefocused_area_info_list = [
+            prefocused_area_info \
+                for prefocused_area_info, hand_landmark_score in zip(prefocused_area_info_list, hand_landmark_scores) \
+                    if hand_landmark_score >= hand_landmark_score_th
+        ]
 
 
         elapsed_time = time.time() - start_time
 
-        """
-        デバッグ描画
-
-        hand_info_list:
-            [元画像の中心座標X, 元画像の中心座標Y, 元画像スケールの手のひらの幅, 元画像スケールの手のひらの高さ, 回転角度]
-            ただし、バウンディングボックス全体の幅を2.9倍に拡張している
-            中心座標 [rcx, rcy] は2.9倍拡張の影響を受けていない
-            ただし、Palm Detection の推論に使用した画像を基準とした座標になっている
-        """
+        # デバッグ描画
         debug_image = draw_debug(
             debug_image,
             elapsed_time,
@@ -646,18 +735,19 @@ def main():
             bbox_score_th,
             keypoints_with_scores,
             mirror,
-            palm_detection_input_size,
+            xy_x21s,
             hand_info_list,
+            prefocused_area_info_list,
         )
-
-        # キー処理(ESC：終了) ##################################################
-        key = cv.waitKey(1)
-        if key == 27:  # ESC
-            break
 
         # 画面反映 #############################################################
         cv.imshow('MoveNet(multipose) Demo', debug_image)
         video_writer.write(debug_image)
+
+        # キー処理(ESC：終了) ##################################################
+        key = cv.waitKey(waittime)
+        if key == 27:  # ESC
+            break
 
     if video_writer:
         video_writer.release()
@@ -666,25 +756,11 @@ def main():
     cv.destroyAllWindows()
 
 
-lines = [
-    [0,1],
-    [0,2],
-    [1,3],
-    [2,4],
-    [0,5],
-    [0,6],
-    [5,6],
-    [5,7],
-    [7,9],
-    [6,8],
-    [8,10],
-    [11,12],
-    [5,11],
-    [11,13],
-    [13,15],
-    [6,12],
-    [12,14],
-    [14,16],
+hand_line_idxs = [
+    [0,1], [0,2], [1,3], [2,4], [0,5],
+    [0,6], [5,6], [5,7], [7,9], [6,8],
+    [8,10], [11,12], [5,11], [11,13], [13,15],
+    [6,12], [12,14], [14,16],
 ]
 
 def draw_debug(
@@ -694,8 +770,9 @@ def draw_debug(
     bbox_score_th,
     keypoints_with_scores,
     mirror,
-    palm_detection_input_size,
+    xy_x21s,
     hand_info_list,
+    prefocused_area_info_list,
 ):
     debug_image = copy.deepcopy(image)
 
@@ -719,9 +796,9 @@ def draw_debug(
     54:bbox_y2
     55:bbox_score
     """
-    for idx, keypoints_with_score in enumerate(keypoints_with_scores):
+    for  keypoints_with_score in keypoints_with_scores:
         if keypoints_with_score[55] > bbox_score_th:
-            # Line: bone
+            # MoveNet bones
             _ = [
                 cv.line(
                     debug_image,
@@ -729,11 +806,11 @@ def draw_debug(
                     (int(keypoints_with_score[line_idxs[1]*3+0]), int(keypoints_with_score[line_idxs[1]*3+1])),
                     (0, 255, 0),
                     2
-                ) for line_idxs in lines \
+                ) for line_idxs in hand_line_idxs \
                     if keypoints_with_score[line_idxs[0]*3+2] > keypoint_score_th and keypoints_with_score[line_idxs[1]*3+2] > keypoint_score_th
             ]
 
-            # Circle：各点
+            # MoveNet KeyPoints
             _ = [
                 cv.circle(
                     debug_image,
@@ -748,9 +825,8 @@ def draw_debug(
             bbox_y1 = int(keypoints_with_score[52])
             bbox_x2 = int(keypoints_with_score[53])
             bbox_y2 = int(keypoints_with_score[54])
-            bbox_h = bbox_y2 - bbox_y1
 
-            # Personバウンディングボックス
+            # MoveNet Boundingbox
             cv.rectangle(
                 debug_image,
                 (bbox_x1, bbox_y1),
@@ -766,31 +842,118 @@ def draw_debug(
                 2,
             )
 
-            # """
-            # 手のひらバウンディングボックス描画
-            # hand_info:
-            #     [元画像の中心座標X, 元画像の中心座標Y, 元画像スケールの手のひらの幅, 元画像スケールの手のひらの高さ, 回転角度]
-            #     ただし、バウンディングボックス全体の幅を2.9倍に拡張している
-            #     中心座標 [rcx, rcy] は2.9倍拡張の影響を受けていない
-            #     ただし、Palm Detection の推論に使用した画像を基準とした座標になっている
-            # """
-            # for hand_info in hand_info_list:
-            #     rcx = hand_info[0]
-            #     rcy = hand_info[1]
-            #     w = hand_info[2]
-            #     h = hand_info[3]
-            #     degree = hand_info[4]
-            #     bbox_x1 = int(rcx - w // 2)
-            #     bbox_y1 = int(rcy - h // 2)
-            #     bbox_x2 = int(rcx + w // 2)
-            #     bbox_y2 = int(rcy + h // 2)
-            #     cv.rectangle(
-            #         debug_image,
-            #         (bbox_x1, bbox_y1),
-            #         (bbox_x2, bbox_y2),
-            #         (0, 0, 255),
-            #         2,
-            #     )
+
+    for prefocused_area_info, xy_x21, hand_info in zip(prefocused_area_info_list, xy_x21s, hand_info_list):
+        """
+        base_cx, # 画像リサイズ前後の中心点X
+        base_cy, # 画像リサイズ前後の中心点X
+        base_width, # 画像リサイズ前の全体の幅
+        base_height, # 画像リサイズ前の全体の高さ
+        wrist_x1, # 画像リサイズ前のX1
+        wrist_y1, # 画像リサイズ前のY1
+        hand_image_scale_ratio, # キーポイントをもとの座標に戻すときの上下倍率
+        """
+        base_width, base_height, wrist_x1, wrist_y1, hand_image_scale_ratio = prefocused_area_info
+        # cv.rectangle(
+        #     debug_image,
+        #     (wrist_x1, wrist_y1),
+        #     (wrist_x1+base_width, wrist_y1+base_height),
+        #     (255, 255, 255),
+        #     4,
+        # )
+        # cv.rectangle(
+        #     debug_image,
+        #     (wrist_x1, wrist_y1),
+        #     (wrist_x1+base_width, wrist_y1+base_height),
+        #     (0, 0, 255),
+        #     2,
+        # )
+        # cv.putText(
+        #     debug_image,
+        #     f'PF Area',
+        #     (wrist_x1, wrist_y1),
+        #     cv.FONT_HERSHEY_SIMPLEX,
+        #     0.7,
+        #     (255, 255, 255),
+        #     2,
+        #     cv.LINE_AA,
+        # )
+        # cv.putText(
+        #     debug_image,
+        #     f'PF Area',
+        #     (wrist_x1, wrist_y1),
+        #     cv.FONT_HERSHEY_SIMPLEX,
+        #     0.7,
+        #     (0, 0, 255),
+        #     1,
+        #     cv.LINE_AA,
+        # )
+
+        """
+        pd_cx: 手のひらバウンディングボックスの中心座標X (192x192スケール)
+        pd_cy: 手のひらバウンディングボックスの中心座標Y (192x192スケール)
+        pd_square_size: 手のひらバウンディングボックスの幅と高さ (192x192スケール)
+        pd_degree: 手のひらの回転角 (192x192スケール)
+        """
+        pd_cx, pd_cy, pd_square_size, pd_degree = hand_info
+
+        pd_scaled_cx = pd_cx * hand_image_scale_ratio
+        pd_scaled_cy = pd_cy * hand_image_scale_ratio
+        pd_scaled_square_size = pd_square_size * hand_image_scale_ratio
+
+        # # 回転を考慮しないバウンディングボックスの描画, オレンジ色の枠
+        # pd_scaled_rotated_wrist_cx = wrist_x1 + pd_scaled_cx
+        # pd_scaled_rotated_wrist_cy = wrist_y1 + pd_scaled_cy
+        # hand_info_tuple = (
+        #     (pd_scaled_rotated_wrist_cx, pd_scaled_rotated_wrist_cy),
+        #     (pd_scaled_square_size, pd_scaled_square_size),
+        #     0,
+        # )
+        # box = cv.boxPoints(hand_info_tuple).astype(np.int0)
+        # cv.drawContours(debug_image, [box], 0,(0,128,255), 2, cv.LINE_AA)
+
+        # 回転を考慮したバウンディングボックスの描画, 赤色の枠
+        pd_scaled_rotated_wrist_cx = wrist_x1 + pd_scaled_cx
+        pd_scaled_rotated_wrist_cy = wrist_y1 + pd_scaled_cy
+        hand_info_tuple = (
+            (pd_scaled_rotated_wrist_cx, pd_scaled_rotated_wrist_cy),
+            (pd_scaled_square_size, pd_scaled_square_size),
+            pd_degree,
+        )
+        box = cv.boxPoints(hand_info_tuple).astype(np.int0)
+        cv.drawContours(debug_image, [box], 0,(0,0,255), 2, cv.LINE_AA)
+
+        # xy_x21: 一人分の手のひらランドマーク座標XY * 21個, [21, 2]
+        rad = np.deg2rad(pd_degree)
+        R = np.array(
+            [
+                [np.cos(rad), -np.sin(rad)],
+                [np.sin(rad),  np.cos(rad)],
+            ]
+        )
+        xy_x21 = xy_x21 - pd_scaled_square_size/2
+        xy_x21 = np.dot(xy_x21, R.T)
+        xy_x21 = xy_x21 + [
+            pd_scaled_rotated_wrist_cx,
+            pd_scaled_rotated_wrist_cy,
+        ]
+        lines = np.asarray(
+            [
+                np.array([xy_x21[point] for point in line]).astype(np.int32) for line in lines_hand
+            ]
+        )
+        thick_coef = pd_scaled_square_size / 400
+        radius = int(1+thick_coef*5)
+        cv.circle(
+            debug_image,
+            (int(pd_scaled_rotated_wrist_cx), int(pd_scaled_rotated_wrist_cy)),
+            int(radius),
+            (0, 0, 255),
+            -1
+        )
+        cv.polylines(debug_image, lines, False, (255, 0, 0), int(radius), cv.LINE_AA)
+        _ = [cv.circle(debug_image, (int(x), int(y)), int(radius), (0,128,255), -1) for x, y in xy_x21]
+
 
     # 処理時間
     txt = f"Elapsed Time : {elapsed_time * 1000:.1f} ms (inference + post-process)"

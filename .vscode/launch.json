@@ -9,7 +9,7 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                // "--file", "test6_360x640.mp4",
+                // "--file", "0024.png",
                 // "--num_person", "20",
                 // "--optimize_myriad",
                 "--mirror",
