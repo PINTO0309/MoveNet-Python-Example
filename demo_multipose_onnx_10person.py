@@ -324,11 +324,11 @@ def run_inference_palm_detection(
             wrist_left_x = wrist_left_x + left_wrist_x_adjust_pixel
             wrist_left_y = wrist_left_y + left_wrist_y_adjust_pixel
             # 正方形のクロップ領域を crop_magnification倍 に拡張する
-            crop_magnification = 1.4 #1.0
-            wrist_left_x1 = wrist_left_x - (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分左にずらした点
-            wrist_left_y1 = wrist_left_y - (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分上にずらした点
-            wrist_left_x2 = wrist_left_x + (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分右にずらした点
-            wrist_left_y2 = wrist_left_y + (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分下にずらした点
+            crop_magnification = 1.0
+            wrist_left_x1 = wrist_left_x - (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から検出身長の４分の１左にずらした点
+            wrist_left_y1 = wrist_left_y - (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から検出身長の４分の１上にずらした点
+            wrist_left_x2 = wrist_left_x + (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から検出身長の４分の１右にずらした点
+            wrist_left_y2 = wrist_left_y + (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から検出身長の４分の１下にずらした点
 
             # 左右と上下に画角の全体サイズ分のマージンを追加する(画角見切れ時の検出ズレ軽減)
             # 画角の幅の２分の１のサイズを半分左、半分右、画角の高さの２分の１のサイズを半分上、半分下に追加する
@@ -396,11 +396,11 @@ def run_inference_palm_detection(
             wrist_right_x = wrist_right_x + right_wrist_x_adjust_pixel
             wrist_right_y = wrist_right_y + right_wrist_y_adjust_pixel
             # 正方形のクロップ領域を crop_magnification倍 に拡張する
-            crop_magnification = 1.4 #1.0
-            wrist_right_x1 = wrist_right_x - (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分左にずらした点
-            wrist_right_y1 = wrist_right_y - (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分上にずらした点
-            wrist_right_x2 = wrist_right_x + (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分右にずらした点
-            wrist_right_y2 = wrist_right_y + (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分下にずらした点
+            crop_magnification = 1.0
+            wrist_right_x1 = wrist_right_x - (bbox_h / 4 * crop_magnification) # 右手手首の中心座標から検出身長の４分の１左にずらした点
+            wrist_right_y1 = wrist_right_y - (bbox_h / 4 * crop_magnification) # 右手手首の中心座標から検出身長の４分の１上にずらした点
+            wrist_right_x2 = wrist_right_x + (bbox_h / 4 * crop_magnification) # 右手手首の中心座標から検出身長の４分の１右にずらした点
+            wrist_right_y2 = wrist_right_y + (bbox_h / 4 * crop_magnification) # 右手手首の中心座標から検出身長の４分の１下にずらした点
 
             # 左右と上下に画角の全体サイズ分のマージンを追加する(画角見切れ時の検出ズレ軽減)
             # 画角の幅の２分の１のサイズを半分左、半分右、画角の高さの２分の１のサイズを半分上、半分下に追加する
