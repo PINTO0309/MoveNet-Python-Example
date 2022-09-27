@@ -371,7 +371,7 @@ def run_inference_palm_detection(
 
                 # 四方をパディングして正方形にした画像の取得
                 square_crop_size = max(wrist_left_x2 - wrist_left_x1, wrist_left_y2 - wrist_left_y1)
-                croped_image = image[wrist_left_y1:wrist_left_y2, wrist_left_x1:wrist_left_x2, :]
+                croped_image = proc_image[wrist_left_y1:wrist_left_y2, wrist_left_x1:wrist_left_x2, :]
 
                 base_width = wrist_left_x2 - wrist_left_x1
                 base_height = wrist_left_y2 - wrist_left_y1
@@ -433,7 +433,7 @@ def run_inference_palm_detection(
                 wrist_right_y2 = int(min(max(0, wrist_right_y2), image_height))
                 # 四方をパディングして正方形にした画像の取得
                 square_crop_size = max(wrist_right_x2 - wrist_right_x1, wrist_right_y2 - wrist_right_y1)
-                croped_image = image[wrist_right_y1:wrist_right_y2, wrist_right_x1:wrist_right_x2, :]
+                croped_image = proc_image[wrist_right_y1:wrist_right_y2, wrist_right_x1:wrist_right_x2, :]
 
                 base_width = wrist_right_x2 - wrist_right_x1
                 base_height = wrist_right_y2 - wrist_right_y1
