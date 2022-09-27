@@ -166,13 +166,6 @@ def run_inference_palm_detection(
                     :
                 ]
 
-                # ################# debug
-                # if hand_image.shape[0] > 0 and hand_image.shape[1] > 0:
-                #     debug_image = copy.deepcopy(hand_image)
-                #     cv.putText(debug_image, f'{x1},{y1} - {x2},{y2}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2, cv.LINE_AA)
-                #     cv.imshow(f'debug1', debug_image)
-                # ################# debug
-
                 rw = x2 - x1
                 rh = y2 - y1
                 square_size = max(rw, rh)
@@ -189,14 +182,6 @@ def run_inference_palm_detection(
                 )
                 hand_image_height = padded_hand_image.shape[0]
                 hand_image_width = padded_hand_image.shape[1]
-
-                # ################# debug
-                # if hand_image_height > 0 and hand_image_width > 0:
-                #     debug_image2 = copy.deepcopy(padded_hand_image)
-                #     cv.circle(debug_image2, (int(0.5*hand_image_width), int(0.5*hand_image_height)), 3, (0, 0, 255), -1)
-                #     cv.putText(debug_image2, f'({x1},{y1}) - ({x2},{y2})', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2, cv.LINE_AA)
-                #     cv.imshow(f'debug2', debug_image2)
-                # ################# debug
 
                 cx = 0.5 * hand_image_width
                 cy = 0.5 * hand_image_height
@@ -226,11 +211,6 @@ def run_inference_palm_detection(
 
                 # クロップ済み、かつ、回転角ゼロ度に調整された画像のリスト(Hand Landmark Detectionモデル入力用画像)
                 # 常時１件のリスト
-                # cropted_rotated_hands_images = rotate_and_crop_rectangle(
-                #     image=hand_image,
-                #     hand_info_nps=hand_info_np[np.newaxis, ...],
-                #     operation_when_cropping_out_of_range='padding',
-                # )
                 cropted_rotated_hands_images = rotate_and_crop_rectangle(
                     image=padded_hand_image,
                     hand_info_nps=hand_info_np[np.newaxis, ...],
@@ -249,17 +229,6 @@ def run_inference_palm_detection(
                         hand_image_scale_ratio, # キーポイントをもとの座標に戻すときの上下倍率
                     ]
                 )
-
-                # ################# debug
-                # if cropted_rotated_hands_images[0].shape[0] > 0 and cropted_rotated_hands_images[0].shape[1] > 0:
-                #     debug_image3 = copy.deepcopy(cropted_rotated_hands_images[0])
-                #     if max_square_size < square_size:
-                #         max_square_size = square_size
-                #     cv.putText(debug_image3, f'{debug_image3.shape[1]}x{debug_image3.shape[0]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2, cv.LINE_AA)
-                #     cv.putText(debug_image3, f'MAX: {max_square_size}', (5,40), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2, cv.LINE_AA)
-                #     cv.circle(debug_image3, (int(0.5*debug_image3.shape[1]), int(0.5*debug_image3.shape[0])), 3, (0, 0, 255), -1)
-                #     cv.imshow(f'debug3', debug_image3)
-                # ################# debug
 
         return \
             batch_nums, \
@@ -334,133 +303,147 @@ def run_inference_palm_detection(
             adjust_ratio = 2
 
             ############################################################## 左手
-            if elbow_left_score >= keypoint_score_th and wrist_left_score >= keypoint_score_th:
-                # 左肘と左手首のX座標位置関係
+            # 左肘と左手首のX座標位置関係
+            left_wrist_x_adjust_pixel = 0
+            inversion = -1 if mirror else 1
+            if distx_left_elbow_to_left_wrist > 0:
+                left_wrist_x_adjust_pixel = (distx_left_elbow_to_left_wrist // adjust_ratio) * inversion
+            elif distx_left_elbow_to_left_wrist == 0:
                 left_wrist_x_adjust_pixel = 0
-                inversion = -1 if mirror else 1
-                if distx_left_elbow_to_left_wrist > 0:
-                    left_wrist_x_adjust_pixel = (distx_left_elbow_to_left_wrist // adjust_ratio) * inversion
-                elif distx_left_elbow_to_left_wrist == 0:
-                    left_wrist_x_adjust_pixel = 0
-                elif  distx_left_elbow_to_left_wrist < 0:
-                    left_wrist_x_adjust_pixel = (distx_left_elbow_to_left_wrist // adjust_ratio) * inversion
-                # 左肘と左手首のY座標位置関係
+            elif  distx_left_elbow_to_left_wrist < 0:
+                left_wrist_x_adjust_pixel = (distx_left_elbow_to_left_wrist // adjust_ratio) * inversion
+            # 左肘と左手首のY座標位置関係
+            left_wrist_y_adjust_pixel = 0
+            if disty_left_elbow_to_left_wrist > 0:
+                left_wrist_y_adjust_pixel = (disty_left_elbow_to_left_wrist // adjust_ratio) * -1
+            elif disty_left_elbow_to_left_wrist == 0:
                 left_wrist_y_adjust_pixel = 0
-                if disty_left_elbow_to_left_wrist > 0:
-                    left_wrist_y_adjust_pixel = (disty_left_elbow_to_left_wrist // adjust_ratio) * -1
-                elif disty_left_elbow_to_left_wrist == 0:
-                    left_wrist_y_adjust_pixel = 0
-                elif  disty_left_elbow_to_left_wrist < 0:
-                    left_wrist_y_adjust_pixel = (disty_left_elbow_to_left_wrist // adjust_ratio) * -1
-                # クロップ中心位置補正
-                wrist_left_x = wrist_left_x + left_wrist_x_adjust_pixel
-                wrist_left_y = wrist_left_y + left_wrist_y_adjust_pixel
-                # 正方形のクロップ領域を crop_magnification倍 に拡張する
-                crop_magnification = 1.0
-                wrist_left_x1 = wrist_left_x - (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分左にずらした点
-                wrist_left_y1 = wrist_left_y - (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分上にずらした点
-                wrist_left_x2 = wrist_left_x + (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分右にずらした点
-                wrist_left_y2 = wrist_left_y + (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分下にずらした点
+            elif  disty_left_elbow_to_left_wrist < 0:
+                left_wrist_y_adjust_pixel = (disty_left_elbow_to_left_wrist // adjust_ratio) * -1
+            # クロップ中心位置補正
+            wrist_left_x = wrist_left_x + left_wrist_x_adjust_pixel
+            wrist_left_y = wrist_left_y + left_wrist_y_adjust_pixel
+            # 正方形のクロップ領域を crop_magnification倍 に拡張する
+            crop_magnification = 1.4 #1.0
+            wrist_left_x1 = wrist_left_x - (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分左にずらした点
+            wrist_left_y1 = wrist_left_y - (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分上にずらした点
+            wrist_left_x2 = wrist_left_x + (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分右にずらした点
+            wrist_left_y2 = wrist_left_y + (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分下にずらした点
 
-                # 画角の範囲外参照回避
-                wrist_left_x1 = int(min(max(0, wrist_left_x1), image_width))
-                wrist_left_y1 = int(min(max(0, wrist_left_y1), image_height))
-                wrist_left_x2 = int(min(max(0, wrist_left_x2), image_width))
-                wrist_left_y2 = int(min(max(0, wrist_left_y2), image_height))
+            # 左右と上下に画角の全体サイズ分のマージンを追加する(画角見切れ時の検出ズレ軽減)
+            # 画角の幅の２分の１のサイズを半分左、半分右、画角の高さの２分の１のサイズを半分上、半分下に追加する
+            padded_proc_image = pad_image(
+                image=proc_image,
+                resize_width=int(proc_image.shape[1]*3),
+                resize_height=int(proc_image.shape[0]*3),
+            )
+            left_padding_size = (padded_proc_image.shape[1] - image_width) // 2
+            top_padding_size = (padded_proc_image.shape[0] - image_height) // 2
 
 
-                # 四方をパディングして正方形にした画像の取得
-                square_crop_size = max(wrist_left_x2 - wrist_left_x1, wrist_left_y2 - wrist_left_y1)
-                croped_image = proc_image[wrist_left_y1:wrist_left_y2, wrist_left_x1:wrist_left_x2, :]
+            # 四方をパディングして正方形にした画像の取得
+            square_crop_size = int(max(wrist_left_x2 - wrist_left_x1, wrist_left_y2 - wrist_left_y1))
+            croped_image = padded_proc_image[
+                int(wrist_left_y1+top_padding_size):int(wrist_left_y2+top_padding_size),
+                int(wrist_left_x1+left_padding_size):int(wrist_left_x2+left_padding_size),
+                :
+            ]
 
-                base_width = wrist_left_x2 - wrist_left_x1
-                base_height = wrist_left_y2 - wrist_left_y1
+            base_width = wrist_left_x2 - wrist_left_x1
+            base_height = wrist_left_y2 - wrist_left_y1
 
-                left_padded_image = pad_image(
-                    image=croped_image,
-                    resize_width=square_crop_size,
-                    resize_height=square_crop_size,
+            left_padded_image = pad_image(
+                image=croped_image,
+                resize_width=square_crop_size,
+                resize_height=square_crop_size,
+            )
+            if left_padded_image.shape[0] > 0 and left_padded_image.shape[1] > 0:
+                left_padded_image_resized = cv.resize(
+                    left_padded_image,
+                    dsize=(input_width, input_height),
                 )
-                if left_padded_image.shape[0] > 0 and left_padded_image.shape[1] > 0:
-                    left_padded_image_resized = cv.resize(
-                        left_padded_image,
-                        dsize=(input_width, input_height),
-                    )
-                    hand_images.append(left_padded_image_resized)
-                    hand_image_scale_ratio = (wrist_left_x2 - wrist_left_x1) / left_padded_image_resized.shape[1]
-                    prefocused_area_info_list.append(
-                        [
-                            base_width, # 画像リサイズ前の全体の幅
-                            base_height, # 画像リサイズ前の全体の高さ
-                            wrist_left_x1, # 画像リサイズ前のX1
-                            wrist_left_y1, # 画像リサイズ前のY1
-                            hand_image_scale_ratio, # キーポイントをもとの座標に戻すときの上下倍率
-                        ]
-                    )
+                hand_images.append(left_padded_image_resized)
+                hand_image_scale_ratio = (wrist_left_x2 - wrist_left_x1) / left_padded_image_resized.shape[1]
+                prefocused_area_info_list.append(
+                    [
+                        base_width, # 画像リサイズ前の全体の幅
+                        base_height, # 画像リサイズ前の全体の高さ
+                        wrist_left_x1, # 画像リサイズ前のX1
+                        wrist_left_y1, # 画像リサイズ前のY1
+                        hand_image_scale_ratio, # キーポイントをもとの座標に戻すときの上下倍率
+                    ]
+                )
 
             ############################################################## 右手
-            if elbow_right_score >= keypoint_score_th and wrist_right_score >= keypoint_score_th:
-                # 左肘と左手首のX座標位置関係
+            # 左肘と左手首のX座標位置関係
+            right_wrist_x_adjust_pixel = 0
+            inversion = -1 if mirror else 1
+            if distx_right_elbow_to_right_wrist > 0:
+                right_wrist_x_adjust_pixel = (distx_right_elbow_to_right_wrist // adjust_ratio) * inversion
+            elif distx_right_elbow_to_right_wrist == 0:
                 right_wrist_x_adjust_pixel = 0
-                inversion = -1 if mirror else 1
-                if distx_right_elbow_to_right_wrist > 0:
-                    right_wrist_x_adjust_pixel = (distx_right_elbow_to_right_wrist // adjust_ratio) * inversion
-                elif distx_right_elbow_to_right_wrist == 0:
-                    right_wrist_x_adjust_pixel = 0
-                elif  distx_right_elbow_to_right_wrist < 0:
-                    right_wrist_x_adjust_pixel = (distx_right_elbow_to_right_wrist // adjust_ratio) * inversion
-                # 左肘と左手首のY座標位置関係
+            elif  distx_right_elbow_to_right_wrist < 0:
+                right_wrist_x_adjust_pixel = (distx_right_elbow_to_right_wrist // adjust_ratio) * inversion
+            # 左肘と左手首のY座標位置関係
+            right_wrist_y_adjust_pixel = 0
+            if disty_right_elbow_to_right_wrist > 0:
+                right_wrist_y_adjust_pixel = (disty_right_elbow_to_right_wrist // adjust_ratio) * -1
+            elif disty_right_elbow_to_right_wrist == 0:
                 right_wrist_y_adjust_pixel = 0
-                if disty_right_elbow_to_right_wrist > 0:
-                    right_wrist_y_adjust_pixel = (disty_right_elbow_to_right_wrist // adjust_ratio) * -1
-                elif disty_right_elbow_to_right_wrist == 0:
-                    right_wrist_y_adjust_pixel = 0
-                elif  disty_right_elbow_to_right_wrist < 0:
-                    right_wrist_y_adjust_pixel = (disty_right_elbow_to_right_wrist // adjust_ratio) * -1
-                # クロップ中心位置補正
-                wrist_right_x = wrist_right_x + right_wrist_x_adjust_pixel
-                wrist_right_y = wrist_right_y + right_wrist_y_adjust_pixel
-                # 正方形のクロップ領域を crop_magnification倍 に拡張する
-                crop_magnification = 1.0
-                wrist_right_x1 = wrist_right_x - (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分左にずらした点
-                wrist_right_y1 = wrist_right_y - (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分上にずらした点
-                wrist_right_x2 = wrist_right_x + (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分右にずらした点
-                wrist_right_y2 = wrist_right_y + (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分下にずらした点
-                # 画角の範囲外参照回避
-                wrist_right_x1 = int(min(max(0, wrist_right_x1), image_width))
-                wrist_right_y1 = int(min(max(0, wrist_right_y1), image_height))
-                wrist_right_x2 = int(min(max(0, wrist_right_x2), image_width))
-                wrist_right_y2 = int(min(max(0, wrist_right_y2), image_height))
-                # 四方をパディングして正方形にした画像の取得
-                square_crop_size = max(wrist_right_x2 - wrist_right_x1, wrist_right_y2 - wrist_right_y1)
-                croped_image = proc_image[wrist_right_y1:wrist_right_y2, wrist_right_x1:wrist_right_x2, :]
+            elif  disty_right_elbow_to_right_wrist < 0:
+                right_wrist_y_adjust_pixel = (disty_right_elbow_to_right_wrist // adjust_ratio) * -1
+            # クロップ中心位置補正
+            wrist_right_x = wrist_right_x + right_wrist_x_adjust_pixel
+            wrist_right_y = wrist_right_y + right_wrist_y_adjust_pixel
+            # 正方形のクロップ領域を crop_magnification倍 に拡張する
+            crop_magnification = 1.4 #1.0
+            wrist_right_x1 = wrist_right_x - (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分左にずらした点
+            wrist_right_y1 = wrist_right_y - (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分上にずらした点
+            wrist_right_x2 = wrist_right_x + (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分右にずらした点
+            wrist_right_y2 = wrist_right_y + (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分下にずらした点
 
-                base_width = wrist_right_x2 - wrist_right_x1
-                base_height = wrist_right_y2 - wrist_right_y1
+            # 左右と上下に画角の全体サイズ分のマージンを追加する(画角見切れ時の検出ズレ軽減)
+            # 画角の幅の２分の１のサイズを半分左、半分右、画角の高さの２分の１のサイズを半分上、半分下に追加する
+            padded_proc_image = pad_image(
+                image=proc_image,
+                resize_width=int(proc_image.shape[1]*3),
+                resize_height=int(proc_image.shape[0]*3),
+            )
+            left_padding_size = (padded_proc_image.shape[1] - image_width) // 2
+            top_padding_size = (padded_proc_image.shape[0] - image_height) // 2
 
-                right_padded_image = pad_image(
-                    image=croped_image,
-                    resize_width=square_crop_size,
-                    resize_height=square_crop_size,
+            # 四方をパディングして正方形にした画像の取得
+            square_crop_size = int(max(wrist_right_x2 - wrist_right_x1, wrist_right_y2 - wrist_right_y1))
+            croped_image = padded_proc_image[
+                int(wrist_right_y1+top_padding_size):int(wrist_right_y2+top_padding_size),
+                int(wrist_right_x1+left_padding_size):int(wrist_right_x2+left_padding_size),
+                :
+            ]
+
+            base_width = wrist_right_x2 - wrist_right_x1
+            base_height = wrist_right_y2 - wrist_right_y1
+
+            right_padded_image = pad_image(
+                image=croped_image,
+                resize_width=square_crop_size,
+                resize_height=square_crop_size,
+            )
+            if right_padded_image.shape[0] > 0 and right_padded_image.shape[1] > 0:
+                right_padded_image_resized = cv.resize(
+                    right_padded_image,
+                    dsize=(input_width, input_height),
                 )
-                if right_padded_image.shape[0] > 0 and right_padded_image.shape[1] > 0:
-                    right_padded_image_resized = cv.resize(
-                        right_padded_image,
-                        dsize=(input_width, input_height),
-                    )
-                    hand_images.append(right_padded_image_resized)
-                    hand_image_scale_ratio = (wrist_right_x2 - wrist_right_x1) / right_padded_image_resized.shape[1]
-                    prefocused_area_info_list.append(
-                        [
-                            base_width, # 画像リサイズ前の全体の幅
-                            base_height, # 画像リサイズ前の全体の高さ
-                            wrist_right_x1, # 画像リサイズ前のX1
-                            wrist_right_y1, # 画像リサイズ前のY1
-                            hand_image_scale_ratio, # キーポイントをもとの座標に戻すときの上下倍率
-                        ]
-                    )
-
-
+                hand_images.append(right_padded_image_resized)
+                hand_image_scale_ratio = (wrist_right_x2 - wrist_right_x1) / right_padded_image_resized.shape[1]
+                prefocused_area_info_list.append(
+                    [
+                        base_width, # 画像リサイズ前の全体の幅
+                        base_height, # 画像リサイズ前の全体の高さ
+                        wrist_right_x1, # 画像リサイズ前のX1
+                        wrist_right_y1, # 画像リサイズ前のY1
+                        hand_image_scale_ratio, # キーポイントをもとの座標に戻すときの上下倍率
+                    ]
+                )
 
 
     if len(hand_images) > 0:
@@ -830,8 +813,6 @@ def main():
                     if keypoints_with_score[55] >= bbox_score_th
         ]
 
-        # batch_nums = np.asarray([])
-        # score_cx_cy_w_wristcenterxy_middlefingerxy = np.asarray([])
         hand_image_list = []
         xy_x21s = np.asarray([])
 
@@ -859,20 +840,18 @@ def main():
                 hand_image_list = []
                 for prefocused_area_info, hand_info in zip(prefocused_area_info_list, hand_info_list):
                     # wrist_y1, wrist_y1: 画像リサイズ前のX1, 元画像の四方をパディングした状態でパディング部を含めて正方形にクロップした四角の左上
-                    # wrist_x1=-102, wrist_y1=11, hand_image_scale_ratio=1.0
                     base_width, base_height, wrist_x1, wrist_y1, hand_image_scale_ratio = prefocused_area_info
 
                     # 手のひら検出された結果を全体画像の座標系に再スケーリング
                     # pd_cx, pd_cy: パディングごとクロップされた正方形の中での中心点, 相対座標
-                    # pd_cx=226, pd_cy=226, pd_square_size=452, pd_degree79.5
                     pd_cx, pd_cy, pd_square_size, pd_degree = hand_info
                     pd_scaled_cx = pd_cx * hand_image_scale_ratio
                     pd_scaled_cy = pd_cy * hand_image_scale_ratio
                     pd_scaled_square_size = pd_square_size * hand_image_scale_ratio
-                    pd_scaled_x1 = wrist_x1 + int(pd_scaled_cx - pd_scaled_square_size // 2)
-                    pd_scaled_y1 = wrist_y1 + int(pd_scaled_cy - pd_scaled_square_size // 2)
-                    pd_scaled_x2 = wrist_x1 + int(pd_scaled_cx + pd_scaled_square_size // 2)
-                    pd_scaled_y2 = wrist_y1 +int(pd_scaled_cy + pd_scaled_square_size // 2)
+                    pd_scaled_x1 = int(wrist_x1 + pd_scaled_cx - pd_scaled_square_size / 2)
+                    pd_scaled_y1 = int(wrist_y1 + pd_scaled_cy - pd_scaled_square_size / 2)
+                    pd_scaled_x2 = int(wrist_x1 + pd_scaled_cx + pd_scaled_square_size / 2)
+                    pd_scaled_y2 = int(wrist_y1 + pd_scaled_cy + pd_scaled_square_size / 2)
                     # 回転角をゼロ度に補正した手のひら画像の切り出し
                     hand_image = debug_image[pd_scaled_y1:pd_scaled_y2, pd_scaled_x1:pd_scaled_x2, :]
                     if hand_image.shape[0] > 0 and hand_image.shape[1] > 0:
@@ -891,17 +870,6 @@ def main():
                         if not cropted_rotated_hands_images:
                             continue
                         hand_image_list.append(cropted_rotated_hands_images[0])
-
-                        # ################# debug
-                        # if cropted_rotated_hands_images[0].shape[0] > 0 and cropted_rotated_hands_images[0].shape[1] > 0:
-                        #     debug_image4 = copy.deepcopy(cropted_rotated_hands_images[0])
-                        #     # if max_square_size < square_size:
-                        #     #     max_square_size = square_size
-                        #     cv.putText(debug_image4, f'{debug_image.shape[1]}x{debug_image.shape[0]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2, cv.LINE_AA)
-                        #     cv.putText(debug_image4, f'MAX: {max_square_size}', (5,40), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2, cv.LINE_AA)
-                        #     cv.circle(debug_image4, (int(0.5*debug_image.shape[1]), int(0.5*debug_image.shape[0])), 3, (0, 0, 255), -1)
-                        #     cv.imshow(f'debug4', debug_image4)
-                        # ################# debug
 
             xy_x21s, \
             hand_landmark_scores, \
@@ -1128,10 +1096,6 @@ def draw_debug(
         )
         box = cv.boxPoints(hand_info_tuple).astype(np.int0)
         cv.drawContours(debug_image, [box], 0,(0,0,255), 2, cv.LINE_AA)
-
-        ################# debug
-        cv.putText(debug_image, f'cx,cy: {pd_scaled_rotated_wrist_cx},{pd_scaled_rotated_wrist_cy} square_size: {pd_scaled_square_size}', (10, 50), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2, cv.LINE_AA)
-        ################# debug
 
         # xy_x21: 一人分の手のひらランドマーク座標XY * 21個, [21, 2]
         rad = np.deg2rad(pd_degree)

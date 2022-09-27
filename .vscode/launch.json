@@ -10,7 +10,7 @@
             "justMyCode": true,
             "args": [
                 // "--file", "test9_360x640.mp4",
-                // "--file", "pose.png",
+                // "--file", "far.png",
                 // "--num_person", "20",
                 // "--optimize_myriad",
                 "--mirror",
