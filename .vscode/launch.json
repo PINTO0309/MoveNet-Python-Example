@@ -9,12 +9,32 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                // "--file", "0024.png",
+                // "--file", "test9_360x640.mp4",
+                // "--file", "pose.png",
                 // "--num_person", "20",
                 // "--optimize_myriad",
                 "--mirror",
                 // "--bbox_score", "0.40",
                 "--palm_square_crop",
+                // "--debug",
+            ]
+        },
+        {
+            "name": "myriad",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                // "--file", "test9_360x640.mp4",
+                // "--file", "pose_no_2.png",
+                // "--num_person", "20",
+                // "--optimize_myriad",
+                // "--mirror",
+                // "--bbox_score", "0.40",
+                // "--palm_square_crop",
+                "--cpu_gpu", "MYRIAD",
             ]
         }
     ]

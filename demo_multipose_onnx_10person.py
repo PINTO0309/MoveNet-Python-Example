@@ -109,11 +109,11 @@ def run_inference_palm_detection(
     prefocused_area_info_list = []
     hand_image_list = []
 
+    proc_image = copy.deepcopy(image)
+    input_image = copy.deepcopy(image)
+
     # [近距離] MoveNet未検出の場合はプレフォーカスせずに画角全体で PalmDetection をそのまま実行する
     if len(keypoints_with_scores) == 0:
-        proc_image = copy.deepcopy(image)
-        input_image = copy.deepcopy(image)
-
         padded_image, resized_image = keep_aspect_resize_and_pad(input_image, input_width, input_height)
 
         # input_image = cv.resize(input_image, (input_width, input_height))
@@ -361,11 +361,14 @@ def run_inference_palm_detection(
                 wrist_left_y1 = wrist_left_y - (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分上にずらした点
                 wrist_left_x2 = wrist_left_x + (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分右にずらした点
                 wrist_left_y2 = wrist_left_y + (bbox_h / 4 * crop_magnification) # 左手手首の中心座標から肩幅の半分下にずらした点
+
                 # 画角の範囲外参照回避
                 wrist_left_x1 = int(min(max(0, wrist_left_x1), image_width))
                 wrist_left_y1 = int(min(max(0, wrist_left_y1), image_height))
                 wrist_left_x2 = int(min(max(0, wrist_left_x2), image_width))
                 wrist_left_y2 = int(min(max(0, wrist_left_y2), image_height))
+
+
                 # 四方をパディングして正方形にした画像の取得
                 square_crop_size = max(wrist_left_x2 - wrist_left_x1, wrist_left_y2 - wrist_left_y1)
                 croped_image = image[wrist_left_y1:wrist_left_y2, wrist_left_x1:wrist_left_x2, :]
@@ -889,16 +892,16 @@ def main():
                             continue
                         hand_image_list.append(cropted_rotated_hands_images[0])
 
-                        ################# debug
-                        if cropted_rotated_hands_images[0].shape[0] > 0 and cropted_rotated_hands_images[0].shape[1] > 0:
-                            debug_image4 = copy.deepcopy(cropted_rotated_hands_images[0])
-                            # if max_square_size < square_size:
-                            #     max_square_size = square_size
-                            cv.putText(debug_image4, f'{debug_image.shape[1]}x{debug_image.shape[0]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2, cv.LINE_AA)
-                            cv.putText(debug_image4, f'MAX: {max_square_size}', (5,40), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2, cv.LINE_AA)
-                            cv.circle(debug_image4, (int(0.5*debug_image.shape[1]), int(0.5*debug_image.shape[0])), 3, (0, 0, 255), -1)
-                            cv.imshow(f'debug4', debug_image4)
-                        ################# debug
+                        # ################# debug
+                        # if cropted_rotated_hands_images[0].shape[0] > 0 and cropted_rotated_hands_images[0].shape[1] > 0:
+                        #     debug_image4 = copy.deepcopy(cropted_rotated_hands_images[0])
+                        #     # if max_square_size < square_size:
+                        #     #     max_square_size = square_size
+                        #     cv.putText(debug_image4, f'{debug_image.shape[1]}x{debug_image.shape[0]}', (5,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2, cv.LINE_AA)
+                        #     cv.putText(debug_image4, f'MAX: {max_square_size}', (5,40), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2, cv.LINE_AA)
+                        #     cv.circle(debug_image4, (int(0.5*debug_image.shape[1]), int(0.5*debug_image.shape[0])), 3, (0, 0, 255), -1)
+                        #     cv.imshow(f'debug4', debug_image4)
+                        # ################# debug
 
             xy_x21s, \
             hand_landmark_scores, \

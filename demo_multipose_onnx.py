@@ -33,10 +33,17 @@ def run_inference(onnx_session, input_size, image):
     image_width, image_height = image.shape[1], image.shape[0]
 
     # 前処理
-    input_image = cv.resize(image, dsize=(input_size, input_size))  # リサイズ
-    input_image = cv.cvtColor(input_image, cv.COLOR_BGR2RGB)  # BGR→RGB変換
-    input_image = input_image.reshape(-1, input_size, input_size, 3)  # リシェイプ
-    input_image = input_image.astype('int32')  # int32へキャスト
+    # input_image = cv.resize(image, dsize=(input_size, input_size))  # リサイズ
+    # input_image = cv.cvtColor(input_image, cv.COLOR_BGR2RGB)  # BGR→RGB変換
+    # input_image = input_image.reshape(-1, input_size, input_size, 3)  # リシェイプ
+    # # input_image = input_image.astype('int32')  # int32へキャスト
+    # input_image = input_image.astype('float32')
+    image_width = np.asarray(image.shape[1], dtype=np.int64)
+    image_height = np.asarray(image.shape[0], dtype=np.int64)
+    input_image = copy.deepcopy(image)
+    input_image = cv.resize(input_image, dsize=(256, 192))
+    input_image = input_image[..., ::-1]
+    input_image = input_image.transpose(2,0,1)[np.newaxis, ...].astype(np.float32)
 
     # 推論
     input_name = onnx_session.get_inputs()[0].name
@@ -95,14 +102,38 @@ def main():
 
     # カメラ準備 ###############################################################
     cap = cv.VideoCapture(cap_device)
-    cap.set(cv.CAP_PROP_FRAME_WIDTH, cap_width)
-    cap.set(cv.CAP_PROP_FRAME_HEIGHT, cap_height)
-
+    # cap.set(cv.CAP_PROP_FRAME_WIDTH, 640)
+    # cap.set(cv.CAP_PROP_FRAME_HEIGHT, 360)
+    cap_width = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
+    cap_height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+    cap_fps = cap.get(cv.CAP_PROP_FPS)
+    fourcc = cv.VideoWriter_fourcc('m','p','4','v')
+    video_writer = cv.VideoWriter(
+        filename='output.mp4',
+        fourcc=fourcc,
+        fps=cap_fps,
+        frameSize=(cap_width, cap_height),
+    )
     # モデルロード #############################################################
-    model_path = "onnx/movenet_multipose_lightning_1.onnx"
+    # model_path = "onnx/movenet_multipose_lightning_1.onnx"
+    model_path = "onnx/movenet_multipose_lightning_192x256_p6_nopost_myriad_barracuda.onnx"
     input_size = 256
 
-    onnx_session = onnxruntime.InferenceSession(model_path)
+    # onnx_session = onnxruntime.InferenceSession(model_path)
+    onnx_session = onnxruntime.InferenceSession(
+        model_path,
+        providers=[
+            # (
+            #     'TensorrtExecutionProvider', {
+            #         'trt_engine_cache_enable': True,
+            #         'trt_engine_cache_path': '.',
+            #         'trt_fp16_enable': True,
+            #     }
+            # ),
+            # 'CUDAExecutionProvider',
+            'CPUExecutionProvider',
+        ],
+    )
 
     while True:
         start_time = time.time()
@@ -142,8 +173,12 @@ def main():
 
         # 画面反映 #############################################################
         cv.imshow('MoveNet(multipose) Demo', debug_image)
+        video_writer.write(debug_image)
 
-    cap.release()
+    if video_writer:
+        video_writer.release()
+    if cap:
+        cap.release()
     cv.destroyAllWindows()
 
 
